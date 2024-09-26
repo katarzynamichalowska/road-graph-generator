@@ -11,15 +11,19 @@ The Road Graph Generator is a tool designed to map roads at construction sites u
 To use the Road Graph Generator, follow these steps:
 
 1. Clone the repository: 
-```git clone https://github.com/katarzynamichalowska/road-graph-generator.git`
+```bash
+git clone https://github.com/katarzynamichalowska/road-graph-generator.git`
+
 2. Install the required dependencies: 
-```pip install requirements.txt`
+```bash
+pip install requirements.txt`
 
 ## Usage
 
 To generate road graphs from GPS data, run the following command:
 
-```python generate_graph.py`
+```bash
+python generate_graph.py
 
 
 

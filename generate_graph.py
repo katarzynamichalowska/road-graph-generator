@@ -3,13 +3,9 @@ import modules.road_data_manipulation as rdm
 import modules.produce_graph as produce_graph
 import modules.plotting_functions as pl
 import modules.edge_inference as edgei
-from sklearn.cluster import DBSCAN
-import json
-import numpy as np
 import pandas as pd
 import os
-import plotly.io as pio
-pio.renderers.default = "iframe"
+
 
 config = config.read_settings('config.ini')
 folder = config["io"]["data_dir"]

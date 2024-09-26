@@ -482,7 +482,7 @@ def trips_processing(data, endpoint_threshold, remove_endpoints):
     
     
     # Wrap the trips in tqdm for progress tracking
-    for _, group in tqdm(trips, desc="Processing trips: ", total=len(trips)):
+    for _, group in tqdm(trips, desc="Processing trips", total=len(trips)):
         # Add cumulative distance
         group['DistanceDriven'] = group['Distance'].cumsum()
 
@@ -518,247 +518,24 @@ def trips_processing(data, endpoint_threshold, remove_endpoints):
     return df
 
 
-
-def make_no_directional_nodes_info(adjacent_nodes_info):
-    no_di_nodes = pd.DataFrame()
-    t = 1
-    for i, k in adjacent_nodes_info.groupby("nodes"):
-        if k.shape[0] == 1:
-            tr = list(k.iloc[0]["trips"])  # +list(k.iloc[1]["trips"])
-        else:
-            tr = list(k.iloc[0]["trips"])+list(k.iloc[1]["trips"])
-        tmp_np_di_nodes = {"edge_id": [
-            "e_"+str(t)], "nodes": [i], "trips": [tr]}
-        tmp_np_di_nodes = pd.DataFrame.from_dict(tmp_np_di_nodes)
-        no_di_nodes = pd.concat(
-            [no_di_nodes, tmp_np_di_nodes], ignore_index=True)
-        t += 1
-    return no_di_nodes
-
-
-def compute_road_trajectories(trips_annotated,
-                              adjacent_nodes_info,
-                              edge_type='dba',
-                              max_trips_per_edge=None,
-                              fast_alg=True) -> list:
-    np.random.seed(10)
-    random.seed(10)
-    """
-    Averages multiple trips that connect each pair of adjacent nodes to find the approximate road trajectory.
-    :param trips_annotated: trips with nearby intersection info, as returned by find_relations().
-    :param adjacent_nodes_info: as returned by find_relations().
-    :param edge_type: the algorithm to use to approximate the trajectory. 
-                      - 'dba' (dynamic time warping barycenter averaging)
-                      - 'random' (random trip)
-                      - 'pw_reg' (pairwise regression)
-    :param max_trips_per_edge: nr trips to be used to approximate the trajectory between each pair of adjacent nodes.
-    :return edges:
-    """
-    adjacent_nodes = adjacent_nodes_info['nodes']
-    adjacent_nodes_trips = adjacent_nodes_info['trips']
-    if max_trips_per_edge is None:
-        pbar = tqdm(total=np.sum(
-            [len(p) if (len(p) < 50) else 50 for p in adjacent_nodes_trips]))
-    elif max_trips_per_edge < 50:
-        pbar = tqdm(total=np.sum([len(p) if (len(
-            p) < max_trips_per_edge) else max_trips_per_edge for p in adjacent_nodes_trips]))
-    else:
-        pbar = tqdm(total=np.sum(
-            [len(p) if (len(p) < 50) else 50 for p in adjacent_nodes_trips]))
-
-    edges = list()
-    for i in range(len(adjacent_nodes)):
-        pos_trips = list(adjacent_nodes_trips[i])
-        pbar.set_description(
-            "Processing edges ({0}/{1})".format(i+1, len(adjacent_nodes_trips)))
-        if max_trips_per_edge is not None:
-            if len(pos_trips) > max_trips_per_edge:
-                pos_trips = random.sample(pos_trips, max_trips_per_edge)
-        if edge_type == 'random':
-            trip_id = np.random.choice(pos_trips)
-            one_trip = trips_annotated[trips_annotated['TripLogId'] == trip_id]
-            edge_df = cut_by_nodes_one_trip(one_trip, adjacent_nodes[i])
-        else:
-            relev_trips = trips_annotated[trips_annotated['TripLogId'].isin(
-                pos_trips)].copy()
-            relev_trips = cut_by_nodes(relev_trips, adjacent_nodes[i])
-            if relev_trips.shape[0] == 0:
-                lat_new = [-1]
-                lon_new = [-1]
-            elif edge_type == 'dba':
-                if relev_trips.shape[0] > 2000 and fast_alg:
-                    relev_trips = relev_trips.sample(2000)
-                relev_trips_s = dm.to_array(relev_trips)
-                lat_new, lon_new = performDBA(
-                    relev_trips_s, n_iterations=1, pbar=pbar)
-
-            #elif edge_type == 'pw_reg':
-            #    model = PiecewiseRegressor(verbose=False, estimator=LinearRegression(),
-            #                               binner=DecisionTreeRegressor(min_samples_leaf=30))
-            #    model.fit(
-            #        np.array(relev_trips['Longitude']).reshape(-1, 1), relev_trips['Latitude'])
-            #    lon_new = np.linspace(relev_trips['Longitude'].min(
-            #    ), relev_trips['Longitude'].max(), num=100)
-            #    lat_new = model.predict(np.array(lon_new).reshape(-1, 1))
-
-            edge_df = pd.DataFrame({'Latitude': lat_new, 'Longitude': lon_new})
-        edge_df['edge_id'] = 'e_' + str(i+1)
-        edges.append(edge_df)
-
-    return edges
-
-
-def compute_road_trajectories_without_direction(cluster_info,
-                                                trips_annotated,
-                                                adjacent_nodes_info,
-                                                max_trips_per_edge=None,
-                                                fast_alg=True) -> list:
-    def _get_median_index(d):
-        ranks = d.rank(pct=True)
-        close_to_median = abs(ranks - 0.5)
-        return close_to_median.idxmin()
-
-    np.random.seed(10)
-    random.seed(10)
-    """
-    Averages multiple trips that connect each pair of adjacent nodes to find the approximate road trajectory.
-    :param trips_annotated: trips with nearby intersection info, as returned by find_relations().
-    :param adjacent_nodes_info: as returned by find_relations().
-    :param edge_type: the algorithm to use to approximate the trajectory. 
-                      - 'dba' (dynamic time warping barycenter averaging)
-                      - 'random' (random trip)
-                      - 'pw_reg' (pairwise regression)
-    :param max_trips_per_edge: nr trips to be used to approximate the trajectory between each pair of adjacent nodes.
-    """
-    adjacent_nodes = adjacent_nodes_info['nodes']
-    adjacent_nodes_trips = adjacent_nodes_info['trips']
-    edges = list()
-    relev_trips_list = list()
-    for i in range(len(adjacent_nodes)):
-        pos_trips = list(adjacent_nodes_trips[i])
-        relev_trips = trips_annotated[trips_annotated['TripLogId'].isin(
-            pos_trips)].copy()
-        relev_trips = cut_by_nodes_without_direction(
-            relev_trips, adjacent_nodes[i])
-        start_lat = cluster_info.iloc[adjacent_nodes[i][0]]["Latitude"]
-        start_long = cluster_info.iloc[adjacent_nodes[i][0]]["Longitude"]
-        start_z = cluster_info.iloc[adjacent_nodes[i][0]]["z"]
-        end_lat = cluster_info.iloc[adjacent_nodes[i][1]]["Latitude"]
-        end_long = cluster_info.iloc[adjacent_nodes[i][1]]["Longitude"]
-        end_z = cluster_info.iloc[adjacent_nodes[i][1]]["z"]
-        relev_trips_list.append(relev_trips)
-
-        if relev_trips.shape[0] == 0:
-            lat_new = [start_lat, end_lat]
-            lon_new = [start_long, end_long]
-            z_new = [start_z, end_z]
-        else:
-            if relev_trips.shape[0] > 1 and fast_alg:
-                # shortest_trip=relev_trips.groupby("TripLogId").count()["Latitude"].idxmin()
-                # Use median length instead
-                trips_group = relev_trips.groupby(
-                    "TripLogId").count()["Latitude"]
-                median_trip = _get_median_index(d=trips_group)
-                relev_trips = relev_trips[relev_trips["TripLogId"]
-                                          == median_trip]
-                relev_trips.sort_values(
-                    by=["TripLogId", "timestamp_s"], inplace=True)
-            relev_trips_s = dm.to_array(relev_trips)
-            # If we want to use several tracks to estimate the track between two nodes we could use DynamicTimeWraping, but this is useless as we at the
-            # moment only use one trip. The metod of using more than one trip has not been tested when including the z position.
-            lat_new, lon_new, z_new = performDBA(relev_trips_s, n_iterations=1)
-            lat_new = np.insert(lat_new, 0, start_lat, axis=0)
-            lon_new = np.insert(lon_new, 0, start_long, axis=0)
-            z_new = np.insert(z_new, 0, start_z, axis=0)
-            lat_new = np.append(lat_new, end_lat)
-            lon_new = np.append(lon_new, end_long)
-            z_new = np.append(z_new, end_z)
-
-        edge_df = pd.DataFrame(
-            {'Latitude': lat_new, 'Longitude': lon_new, 'z': z_new})
-
-        edge_df['edge_id'] = 'e_' + str(i+1)
-        edges.append(edge_df)
-
-    return edges, relev_trips_list
-
-
-def get_cluster_to_merge(points, name, radius):
-    """
-
-    :param points: frame giving the intersection points that can be merged. name: the intersection type("load/dump/road").
-    :param name:
-    :param radius: the maximum distance for merging two intersection points
-    :return: dataframe containing the new merge clusters and a set giving the index of the clusters that has been removed
-    """
-    def distance(p1, p2):
-        dx = p1["x"] - p2[0]
-        dy = p1["y"] - p2[1]
-        return np.sqrt(dx*dx + dy*dy)
-
-    new_clusters = pd.DataFrame()
-    removed_rows = []
-    for i, k in points.iterrows():  # i index, k row
-        p = k[["x", "y"]].to_list()  # get position of point in row i (latlon)
-        # define new column in df consisting of distances from point p (position in row i)
-        points["dist" + str(i)] = points[["x", "y"]
-                                         ].apply(lambda x: distance(x, p), axis=1)
-        # Number of indices whose distance to p is smaller than radius
-        m = points[points["dist" + str(i)] < radius].index.to_list()
-        if len(m) > 1:  # if there is at least one such index
-            index = points.index.max() + i  # Get index of point, for
-            new_clusters = pd.concat([new_clusters, pd.DataFrame({"Latitude": points.iloc[m]["Latitude"].mean(),
-                                                                 "Longitude": points.iloc[m]["Longitude"].mean(),
-                                                                  "in_type": name}, index=[index])], ignore_index=True)  # Append the set m, for some reason
-            removed_rows.append(m)  # m added to removed rows
-
-        continue
-
-    return new_clusters.drop_duplicates(), set(dm.flatten_list(removed_rows))
-
-
-def get_new_points(close_points, points, name):
-    """Isn't this function just taking the average over latitude and longitude for close_points?
-    new_clusters = new_clusters.append(pd.DataFrame({"Latitude": points.iloc[close_points]["Latitude"].mean(),
-                                                     "Longitude": points.iloc[close_points]["Longitude"].mean(),
-                                                     "in_type": name)
-    would do the job?
-    """
-    testFrame = pd.DataFrame(columns=["Latitude", "Longitude", "in_type"])
-    s = len(close_points)
-    la = 0
-    lo = 0
-    for i in close_points:
-        la += points.iloc[i]["Latitude"]
-        lo += points.iloc[i]["Longitude"]
-    la = la*(1.0/s)
-    lo = lo*(1.0/s)
-    testFrame = testFrame.append(
-        {"Latitude": la, "Longitude": lo, "in_type": name}, ignore_index=True)
-    return testFrame
-
-
-def df_turns_neighbour_similarity(df_in: pd.DataFrame, res_step,
-                                  neighbour_dist, similarity_thr) -> pd.DataFrame:
+def calculate_neighbour_similarity(df_in: pd.DataFrame, res_step,neighbour_dist, similarity_thr) -> pd.DataFrame:
     ''' Returns the cells were the track direction is different from the track direction of cells in neigbhouring cells'''
+
     df = df_in.copy()
     df['Course2'] = df['Course']
     df.loc[df['Course'] > 180, 'Course2'] = df['Course']-180
     df['theta2'] = np.radians(df['Course2'])
+
     # adding low resolution and using the median value as the aggregated value
     df["x_"+str(res_step)] = change_resolution(df["x"], step=res_step)
     df["y_"+str(res_step)] = change_resolution(df["y"], step=res_step)
     gr = df.groupby(["x_"+str(res_step), "y_"+str(res_step)])
-    low_res_median = gr[['x', 'y', 'Latitude', 'Longitude',
-                         'theta2', "Altitude"]].median().reset_index()
-    # return low_res_median
-    low_res_median['similarity_median'] = neighbour_similarity(
-        low_res_median, dist=neighbour_dist)
+    low_res_median = gr[['x', 'y', 'Latitude', 'Longitude','theta2', "Altitude"]].median().reset_index()
+    low_res_median['similarity_median'] = neighbour_similarity(low_res_median, dist=neighbour_dist)
 
     # Take out the cells where the median direction is different from the neigbouring cells.
-    low_res_median = low_res_median[low_res_median['similarity_median']
-                                    > similarity_thr]
-    return low_res_median
+    intersection_candidates = low_res_median[low_res_median['similarity_median'] > similarity_thr]
+    return intersection_candidates, low_res_median
 
 
 def change_resolution(values, step):
@@ -884,21 +661,22 @@ def validate_points_in_annulus(all_points, node_center, R, L, proximity_threshol
     return valid_points
 
 
+from tqdm import tqdm  # Ensure you have tqdm installed: pip install tqdm
+
 def mx_extremity_clusters(mx_df_ini, intersection_candidates, R, L, extremity_merging_cluster_dist, min_cl_size, max_dist_from_intersection,
                           epsilon=12, min_samples=5):
     """
     TODO: UPDATE DESCRIPTION
-    Finds the subclusters that are within the radius > R and < R + L. Returns a fram with on row per ping inside this area, indicating its subcluseter. 
+    Finds the subclusters that are within the radius > R and < R + L. Returns a frame with one row per ping inside this area, indicating its subcluster. 
     @param extremity_merging_cluster_dist: max distance to merge points in extremities into one cluster
     @param min_cl_size: minimal size of extremity cluster to be counted
-    @param nr_trips: nr trips to use for each cluster to find the extremity clusters (do not compute all) If -1, then all are computed.
-    @max_dist_from_intersection: The radius around an intersection candidate that we require a track to pass by in o for its gps points in the extremity to be considered.
+    @param max_dist_from_intersection: The radius around an intersection candidate that we require a track to pass by in order for its GPS points in the extremity to be considered.
     """
     mx_df = mx_df_ini.copy()
     list_mx_df_extremities = []
-    for cl_idx in range(len(intersection_candidates)):
-        print("Verifying candidate: " + str(cl_idx) +
-              "/" + str(len(intersection_candidates)))
+    
+    # Using tqdm for progress tracking
+    for cl_idx in tqdm(range(len(intersection_candidates)), desc="Verifying candidates", unit="candidate"):
         mx_df_subset = mx_df.loc[mx_df["cl_idx"] == cl_idx]
         cl = intersection_candidates.iloc[cl_idx]
         mx_df_subset_val = validate_points_in_annulus(all_points=mx_df_subset, node_center=(cl["x"], cl["y"]),
@@ -922,6 +700,7 @@ def mx_extremity_clusters(mx_df_ini, intersection_candidates, R, L, extremity_me
     mx_df_extremities = mx_df_extremities[mx_df_extremities['subcluster'].isin(subcluster_sizes['subcluster'])]
 
     return mx_df_extremities
+
 
 
 def update_frames(cluster_info_ini, mx_df_extremities_ini):

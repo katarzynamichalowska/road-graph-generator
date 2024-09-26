@@ -13,7 +13,6 @@ import networkx as nx
 from produceGraph.DBA_multivariate import performDBA, DTW
 import logging
 logger = logging.getLogger('producegraph')
-import sys
 
 
 def find_adjacent_nodes(trips_nodelists):

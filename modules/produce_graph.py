@@ -453,14 +453,10 @@ def get_nodes(data_ini, df_ini, trips_ini, proj_info, config):
         # Compute the number of extremity clusters around each candidate intersection
         # TODO: This function returns faulty intersections with parallel roads.
         mx_df_extremities = rdm.mx_extremity_clusters(mx_df, config_inter.getfloat('R'),
-                                                      config_inter.getfloat(
-                                                          'L'),
-                                                      config_inter.getfloat(
-                                                          'extremity_merging_cluster_dist'),
-                                                      config_inter.getint(
-                                                          'max_extremity_cluster_size'),
-                                                      config_inter.getint(
-                                                          'nr_trips'),
+                                                      config_inter.getfloat('L'),
+                                                      config_inter.getfloat('extremity_merging_cluster_dist'),
+                                                      config_inter.getint('max_extremity_cluster_size'),
+                                                      config_inter.getint('nr_trips'),
                                                       config_inter.getfloat('max_dist_from_intersection'))
         intersection_candidates, mx_df_extremities = rdm.update_frames(
             intersection_candidates, mx_df_extremities)
@@ -473,7 +469,7 @@ def get_nodes(data_ini, df_ini, trips_ini, proj_info, config):
     # First obtain the load and dump points.
     load = get_load_points(
         data, proj_info, radius=config["graph"].getint('merge_dump_pos'),)
-    dump = get_dump_points_db(
+    dump = get_dropoff_points_db(
         data, proj_info, radius=config["graph"].getint('merge_dump_pos'), eps=0.001)
     cluster_info = pd.concat([cluster_info, dump], ignore_index=True)
     cluster_info = pd.concat([cluster_info, load], ignore_index=True)
@@ -583,28 +579,6 @@ def produce_vehicles(data, proj_info):
     return graph
 
 
-def find_travel_times(trips_annotated, adjacent_nodes_info):
-    """Not used at the moment?"""
-
-    travelTime = {}
-    d = pd.Series(adjacent_nodes_info.nodes.values,
-                  index=adjacent_nodes_info.edge_id.values).to_dict()
-    for i in d:
-        c = rdm.cut_by_nodes_without_direction(trips_annotated, d[i])
-        if c.empty == False:
-            a = c.groupby("TripLogId").\
-                apply(lambda x: (x["timestamp_s"].max(
-                )-x["timestamp_s"].min()))  # .to_frame().reset_index()
-            a = a.to_frame().reset_index()
-            a.columns = ["TripLogId", "Time"]
-            travelTime[i] = a["Time"].tolist()
-        else:
-            travelTime[i] = []
-    return travelTime, d
-
-# TODO should this also be kmeans-style?
-
-
 def get_load_points(data, proj_info, radius):
     """ Takes in the combined data frame and returns a frame containing the load positions. A load position is defined
     by the trimmed average position of a loader in the input data. 
@@ -621,7 +595,6 @@ def get_load_points(data, proj_info, radius):
     xload = []
     yload = []
     zload = []
-    names = []
 
     # The below loop might look nicer in numpy-ish, but it's probably less important
     for i, frame in data.groupby(["LoaderMachineName", "TaskId"], dropna=False):
@@ -669,7 +642,7 @@ def get_load_points(data, proj_info, radius):
     return new_loads
 
 
-def get_dump_points(data, proj_info, n_cluster, radius, min_dump_points):
+def get_dropoff_points(data, proj_info, n_cluster, radius, min_dump_points):
     """
     Obtain the dump points for a set of tracks. The points are clustered and cluster centers are merged if closer to
     each other than a given radius.
@@ -711,27 +684,26 @@ def get_dump_points(data, proj_info, n_cluster, radius, min_dump_points):
 
     point_count = cluster_map["cluster"].value_counts(
     ).reset_index().sort_values(by="index").reset_index()["cluster"]
-    dump = pd.DataFrame(columns=["Latitude", "Longitude", "in_type"])
-    dump["Latitude"] = center[:, 0]
-    dump["Longitude"] = center[:, 1]
-    dump["in_type"] = "dump"
-    dump["Name"] = "Dump"
-    dump["count"] = point_count
+    dropoff = pd.DataFrame(columns=["Latitude", "Longitude", "in_type"])
+    dropoff["Latitude"] = center[:, 0]
+    dropoff["Longitude"] = center[:, 1]
+    dropoff["in_type"] = "dump"
+    dropoff["Name"] = "Dump"
+    dropoff["count"] = point_count
 
-    dump = dump[dump["count"] > min_dump_points].reset_index()
-    dump = rdm.add_meter_columns(dump, proj_info)[0]
-    new_dump, close_points = rdm.get_cluster_to_merge(
-        dump.copy(), "dump", radius=radius)
-    new_dump = rdm.add_meter_columns(new_dump, proj_info)[0]
+    dropoff = dropoff[dropoff["count"] > min_dump_points].reset_index()
+    dropoff = rdm.add_meter_columns(dropoff, proj_info)[0]
+    new_dropoff, close_points = rdm.get_cluster_to_merge(dropoff.copy(), "dump", radius=radius)
+    new_dropoff = rdm.add_meter_columns(new_dropoff, proj_info)[0]
 
     # Adding the altitude to the dump points
     data_list = data[["Longitude", "Latitude", "Altitude"]].to_dict('records')
-    new_dump["z"] = new_dump.apply(lambda x: closest(data_list, x), axis=1)
+    new_dropoff["z"] = new_dropoff.apply(lambda x: closest(data_list, x), axis=1)
 
-    return new_dump
+    return new_dropoff
 
 
-def get_dump_points_db(data, proj_info, radius, eps=0.0001):
+def get_dropoff_points_db(data, proj_info, radius, eps=0.0001):
     """
     Obtain the dump points for a set of tracks. The points are clustered and cluster centers are merged if closer to
     each other than a given radius.
@@ -758,32 +730,25 @@ def get_dump_points_db(data, proj_info, radius, eps=0.0001):
             v['Latitude'], v['Longitude'], p['Latitude'], p['Longitude']))
         return data[data.index(m)]["Altitude"]
 
-    # Here we make a list of all the locations of the dump points. There is one dump point per trip
+    # Here we make a list of all the locations of the drop-off points. There is one drop-off point per trip
     trips = data.groupby("TripLogId")[
         ["DumpLatitude", "DumpLongitude"]].first()
     X = trips.to_numpy()
-    # TODO: Consider trying some other clustering algorithm that doesn't assume sphericity or fixed number of clusters
-    # Spectral?
-
     db = DBSCAN(eps=eps).fit(X)
-    # cluster_map = pd.DataFrame()
-    # cluster_map['data_index'] = trips.index.values
-    # cluster_map['cluster'] = db.labels_
     trips["labels"] = db.labels_
-    dump = pd.DataFrame(columns=["Latitude", "Longitude"])
+    dropoff = pd.DataFrame(columns=["Latitude", "Longitude"])
 
     for i, k in trips.groupby("labels"):
         latitude = k["DumpLatitude"].mean()
         longitude = k["DumpLongitude"].mean()
-        dump.loc[len(dump.index)] = [latitude, longitude]
+        dropoff.loc[len(dropoff.index)] = [latitude, longitude]
 
-    dump["in_type"] = "dump"
-    dump["Name"] = "Dump"
-    dump = rdm.add_meter_columns(dump, proj_info)[0]
-    # new_dump, close_points = rdm.get_cluster_to_merge(dump.copy(), "dump", radius=radius)
-    new_dump = dump
-    new_dump = rdm.add_meter_columns(new_dump, proj_info)[0]
+    dropoff["in_type"] = "dump"
+    dropoff["Name"] = "Dump"
+    dropoff = rdm.add_meter_columns(dropoff, proj_info)[0]
+    new_dropoff = dropoff
+    new_dropoff = rdm.add_meter_columns(new_dropoff, proj_info)[0]
     data_list = data[["Longitude", "Latitude", "Altitude"]].to_dict('records')
 
-    new_dump["z"] = new_dump.apply(lambda x: closest(data_list, x), axis=1)
-    return new_dump
+    new_dropoff["z"] = new_dropoff.apply(lambda x: closest(data_list, x), axis=1)
+    return new_dropoff

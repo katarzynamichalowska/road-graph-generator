@@ -1,6 +1,7 @@
 # Road Graph Generator
 
-This repository contains the source code for the paper [Road Graph Generator: Mapping roads at construction sites from GPS data](https://arxiv.org/abs/2402.09919).
+This repository contains the source code for the paper: 
+[Road Graph Generator: Mapping roads at construction sites from GPS data](https://arxiv.org/abs/2402.09919).
 
 ## Introduction
 
@@ -27,6 +28,12 @@ To generate road graphs from GPS data, run the following command:
 ```bash
 python generate_graph.py
 ```
+
+## Contributors
+
+We want to thank Helga Holmestad for her invaluable work on the code development of this project: 
+[GitHub: Helga Holmestad](https://github.com/helgaholmestadsintef).
+
 
 ## Citing
 

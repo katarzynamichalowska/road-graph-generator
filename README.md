@@ -11,12 +11,12 @@ The Road Graph Generator is a tool designed to map roads at construction sites u
 
 To use the Road Graph Generator, follow these steps:
 
-1. Clone the repository: 
+### 1. Clone the repository: 
 ```bash
 git clone https://github.com/katarzynamichalowska/road-graph-generator.git
 ```
 
-We recommend creating a new environment. If you are using Conda, please run:
+### 2. We recommend creating a new environment. If you are using Conda, please run:
 
 ```bash
 conda create -n road_generator
@@ -24,7 +24,7 @@ conda activate road_generator
 conda install pip
 ```
 
-3. Install the required dependencies: 
+### 3. Install the required dependencies: 
 ```bash
 pip install -r requirements.txt
 ```

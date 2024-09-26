@@ -12,11 +12,13 @@ To use the Road Graph Generator, follow these steps:
 
 1. Clone the repository: 
 ```bash
-git clone https://github.com/katarzynamichalowska/road-graph-generator.git`
+git clone https://github.com/katarzynamichalowska/road-graph-generator.git
+```
 
 2. Install the required dependencies: 
 ```bash
 pip install requirements.txt`
+```
 
 ## Usage
 
@@ -24,6 +26,6 @@ To generate road graphs from GPS data, run the following command:
 
 ```bash
 python generate_graph.py
-
+```
 
 

@@ -14,194 +14,7 @@ from matplotlib.text import Text
 from matplotlib.lines import Line2D
 from IPython.display import display
 
-
-def x_to_lon(x, origin_lat, origin_lon):
-    """
-    Convert x-coordinate in meters to longitude.
-
-    Parameters:
-    - x (float): X-coordinate in meters.
-    - origin_lat (float): Latitude of the origin in degrees.
-    - origin_long (float): Longitude of the origin in degrees.
-
-    Returns:
-    - float: Corresponding longitude in degrees.
-
-    Explanation of constants:
-    - 40075 km: Earth's circumference at the equator.
-    - 1000: Conversion from kilometers to meters.
-    - cos(origin_lat in radians): Adjusts for the Earth's curvature, as the distance represented by one degree of longitude decreases with increasing latitude.
-    """
-    earth_circumference_at_equator = 40075  # km
-    return origin_lon + 360 * x / (earth_circumference_at_equator * 1000 * np.cos(np.pi * origin_lat / 180))
-
-
-def y_to_lat(y, origin_lat, **kwargs):
-    """
-    Convert y-coordinate in meters to latitude.
-
-    Parameters:
-    - y (float): Y-coordinate in meters.
-    - origin_lat (float): Latitude of the origin in degrees.
-    - origin_long (float): Longitude of the origin (unused).
-
-    Returns:
-    - float: Corresponding latitude in degrees.
-
-    Explanation of constants:
-    - 111.32 km: Approximate distance in kilometers for one degree of latitude.
-    - 1000: Conversion from kilometers to meters.
-    """
-    dist_per_lat = 111.32  # km
-    return origin_lat + y / (dist_per_lat * 1000)
-
-
-def plot_map_intersections(graph, origin_lat, origin_long, adjacent_nodes_info, node="all"):
-    """
-    Returns a map with plot of the graph
-    """
-    if node == "all":
-        mapit = folium.Map(
-            location=[origin_lat, origin_long], zoom_start=14, control_scale=True)
-    else:
-        long, lat, z = graph["Network"]["Nodes"][node]["coordinates"]
-        mapit = folium.Map(location=[lat, long],
-                           zoom_start=14, control_scale=True)
-    color = ["red", "green", "blue", "plotyellow", "black", "pink"]*30
-    d = pd.Series(adjacent_nodes_info.nodes.values,
-                  index=adjacent_nodes_info.edge_id.values).to_dict()
-    counter = 0
-    for t, k in enumerate(graph["Network"]["Edges"]):
-        if node in list(d.get(k["id"])) or (node == "all"):
-            counter += 1
-            for i in k["coordinates"]:
-                p = [i[1], i[0]]
-                folium.CircleMarker(
-                    p, fill_color=color[counter], color=color[counter], radius=3, popup=k["id"], weight=2).add_to(mapit)
-    for k in graph["Network"]["Nodes"]:
-        p = [k["coordinates"][1], k["coordinates"][0]]
-        folium.Marker(location=p, icon=folium.DivIcon(
-            html='<div style="font-size: 24pt; color : red">%s</div>' % k["id"],
-        )).add_to(mapit)
-        folium.CircleMarker(location=p, fill_color='red', color='red',
-                            radius=5, popup=k["id"], weight=2).add_to(mapit)
-    # save_obj_html(obj=mapit, directory=mapit_dir, filename=filename)
-    display(mapit)
-    return mapit
-
-
-def plot_raw(data, origin_lat, origin_long, sample=False, frac=1):
-    if sample:
-        print(sample)
-        data = data.sample(frac=frac)
-    print(data.shape)
-    mapit = folium.Map(location=[origin_lat, origin_long],
-                       zoom_start=14, control_scale=True)
-    for i, k in data.iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, color="black", fill_color='black', radius=1, popup=k["TripLogId"]).add_to(mapit)
-    display(mapit)
-    return mapit
-
-
-def plot_dump(data, origin_lat, origin_long, nodes):
-    nodes = nodes[nodes["in_type"] == "dump"]
-    mapit = folium.Map(location=[origin_lat, origin_long],
-                       zoom_start=14, control_scale=True)
-    data = data.drop_duplicates(subset=["DumpLatitude"])
-    for i, k in data.iterrows():
-        p = [k["DumpLatitude"], k["DumpLongitude"]]
-        folium.CircleMarker(location=p, color="black", fill_color='black', radius=1, popup=k["TripLogId"]).add_to(mapit)
-
-    for i, k in nodes.iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, color="red", fill_color='red', radius=2).add_to(mapit)
-    display(mapit)
-    return mapit
-
-
-def plot_raw_and_intersections(data, intersections, origin_lat, origin_long, sample=False, frac=1):
-    if sample:
-        data = data.sample(frac=frac)
-    mapit = folium.Map(location=[origin_lat, origin_long],
-                       zoom_start=14, control_scale=True)
-    for i, k in data.iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, color="black", fill_color='black',
-                            radius=1, popup=k["TripLogId"]).add_to(mapit)
-    for i, k in intersections.iterrows():
-        n = k["id"]
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, popup=n, radius=5,
-                            color="red", fill_color="red").add_to(mapit)
-        folium.Marker(location=p, icon=folium.DivIcon(
-            html='<div style="font-size: 24pt; color : red">%s</div>' % n,
-        )).add_to(mapit)
-
-    display(mapit)
-    return mapit
-
-
-def plot_raw_and_intersections_with_time(data, intersections, origin_lat, origin_long, sample=False, frac=1):
-    if sample:
-        data = data.sample(frac=frac)
-    mapit = folium.Map(location=[origin_lat, origin_long], zoom_start=14)
-    mint = data["timestamp_s"].min()
-    maxt = data["timestamp_s"].max()
-
-    colormap = cm.LinearColormap(colors=['green', 'blue'], index=[
-                                 mint, maxt], vmin=mint, vmax=maxt)
-    for i, k in data.iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, color=colormap(k["timestamp_s"]), fill_color=colormap(
-            k["timestamp_s"]), radius=1, popup=k["TripLogId"]).add_to(mapit)
-    for i, k in intersections.iterrows():
-        n = k["id"]
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, popup=n, radius=5,
-                            color="red", fill_color="red").add_to(mapit)
-        folium.Marker(location=p, icon=folium.DivIcon(
-            html='<div style="font-size: 24pt; color : red">%s</div>' % n,
-        )).add_to(mapit)
-
-    display(mapit)
-
-
-def plot_xy_data(data, origin_lat, origin_long):
-    mapit = folium.Map(location=[origin_lat, origin_long],
-                       zoom_start=14, control_scale=True)
-    for i, k in data.iterrows():
-        p = [y_to_lat(k["y"], origin_lat, origin_long),
-             x_to_lon(k["x"], origin_lat, origin_long)]
-        folium.CircleMarker(p, radius=3, weight=2).add_to(
-            mapit)
-    display(mapit)
-
-
-def plot_roads(trips, cluster_info, dumper=None, title=None, actual_intersections=None, save_name=None):
-    figure, ax = plt.subplots(figsize=(15, 15))
-    ax.scatter(trips['x'], trips['y'], c='k', s=1)
-    ax.scatter(cluster_info['x'], cluster_info['y'],
-               s=150, marker='x', c='red')
-    if actual_intersections is not None:
-        plt.scatter(actual_intersections['x'], actual_intersections['y'], s=50, marker='o', c='dodgerblue')
-
-    if dumper != None:
-        dumperTrips = trips[trips["DumperMachineName"] == dumper]
-        ax.scatter(dumperTrips['x'], dumperTrips['y'], c='yellow', s=1)
-    for i, txt in enumerate(cluster_info["id"]):
-        ax.annotate(
-            txt, (cluster_info["x"].iloc[i], cluster_info["y"].iloc[i]), c="green", size=14)
-    if title is not None:
-        plt.title(title)
-    if save_name is not None:
-        plt.savefig(save_name + '.png')
-    else:
-        plt.show()
-    plt.close()
-
-
-def plot_mass_transport_problem_paper(graph, proj_info, nodes_info, trip=pd.DataFrame(), mx_df=pd.DataFrame(), dump=False, point=None):
+def plot_graph(edges_list, proj_info, nodes_info, trip=pd.DataFrame(), mx_df=pd.DataFrame(), dump=False, point=None, savename="graph"):
 
     mapit = folium.Map(location=[proj_info["origin"][0], proj_info["origin"][1]],
                        zoom_start=3, control_scale=False, tiles="cartodb positron")
@@ -213,25 +26,22 @@ def plot_mass_transport_problem_paper(graph, proj_info, nodes_info, trip=pd.Data
             folium.PolyLine(points, color='grey', weight=2,
                             opacity=1).add_to(mapit)
 
-    for k in graph["Network"]["Edges"]:
+    for k in edges_list:
         points = k["coordinates"]
         points = [(t[1], t[0]) for t in points]
-        folium.PolyLine(points, color="blue", weight=4,
-                        opacity=1).add_to(mapit)
-    for i, k in nodes_info[nodes_info["in_type"] == "load"].iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, color="green",
-                            fill_color='green', radius=5).add_to(mapit)
+        folium.PolyLine(points, color="blue", weight=4, opacity=1).add_to(mapit)
 
-    for i, k in nodes_info[nodes_info["in_type"] == "dump"].iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, color="black",
-                            fill_color='black', radius=5).add_to(mapit)
+    color_mapping = {
+        "load": "green",
+        "dump": "black",
+        "road": "red"
+    }
 
-    for i, k in nodes_info[nodes_info["in_type"] == "road"].iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, color="red",
-                            fill_color='red', radius=5).add_to(mapit)
+    for node_type, color in color_mapping.items():
+        for _, k in nodes_info[nodes_info["in_type"] == node_type].iterrows():
+            p = [k["Latitude"], k["Longitude"]]
+            folium.CircleMarker(location=p, color=color, fill_color=color, radius=5).add_to(mapit)
+
 
     if mx_df.shape[0] > 0:
         for i, k in mx_df.iterrows():
@@ -250,56 +60,9 @@ def plot_mass_transport_problem_paper(graph, proj_info, nodes_info, trip=pd.Data
 
     mapit.fit_bounds(mapit.get_bounds(), padding=(20, 10))
 
-    # mapit.fit_bounds(mapit.get_bounds(), padding=(30, 30))
-    mapit.save("mass_transport_problem.html")
+    mapit.save(f"{savename}.html")
     display(mapit)
 
-
-def plot_test_problem(graph, proj_info, nodes_info, dumper_frame=pd.DataFrame(), trip=pd.DataFrame()):
-    mapit = folium.Map(location=[
-                       proj_info["origin"][0], proj_info["origin"][1]], zoom_start=14, control_scale=False)
-    if trip.shape[0] > 0:
-        for i, k in trip.iterrows():
-            p = [k["Latitude"], k["Longitude"]]
-            folium.CircleMarker(location=p, fill=True, fill_color='yellow',
-                                color='yellow', radius=3, fill_opacity=1, weight=2).add_to(mapit)
-
-    for k in graph["Network"]["Edges"]:
-        points = k["coordinates"]
-        points = [(t[1], t[0]) for t in points]
-        folium.PolyLine(points, color="darkblue",
-                        weight=4, opacity=1).add_to(mapit)
-
-    for i, k in nodes_info[nodes_info["in_type"] == "load"].iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, fill=True, fill_color='blue',
-                            color='blue', radius=5, fill_opacity=1, weight=2).add_to(mapit)
-        folium.Marker(location=p, icon=folium.DivIcon(
-            html='<div style="font-size: 24pt; color : blue">%s</div>' % k["id"],
-        )).add_to(mapit)
-
-    for i, k in nodes_info[nodes_info["in_type"] == "dump"].iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, fill=True, fill_color='green',
-                            color='green', radius=5, fill_opacity=1, weight=2).add_to(mapit)
-        folium.Marker(location=p, icon=folium.DivIcon(
-            html='<div style="font-size: 24pt; color : green">%s</div>' % k["id"],
-        )).add_to(mapit)
-
-    if dumper_frame.shape[0] > 0:
-        c = 0
-        color = ["red", "green", "blue", "yellow", "black", "pink", "grey"]*30
-        for t, p in dumper_frame.groupby(["LoaderMachineName", "TaskId"]):
-            for i, k in p.iterrows():
-                p = [k["LoadLatitude"], k["LoadLongitude"]]
-                folium.CircleMarker(
-                    location=p, fill=True, fill_color=color[c], color=color[c], radius=3, fill_opacity=1, weight=2).add_to(mapit)
-            c += 1
-        for i, k in dumper_frame.iterrows():
-            p = [k["DumpLatitude"], k["DumpLongitude"]]
-            folium.CircleMarker(location=p, fill=True, fill_color='violet',
-                                color='violet', radius=3, fill_opacity=1, weight=2).add_to(mapit)
-    display(mapit)
 
 
 def plot_intersections_with_radii(trips, mx_df_extremities=None, intersection_candidates=None, confirmed_intersections=None,
@@ -364,25 +127,25 @@ class CandidateIntHandler(HandlerBase):
     
 
 # Custom legend handlers
-class ConfIntHandler(HandlerBase):
-    def create_artists(self, legend, orig_handle, x0, y0, width, height, fontsize, trans):
-        center = x0 + width / 2., y0 + height / 2.
-        patch = Circle(center, radius=width / 5.,
-                        color='red', transform=trans)
-        text = Text(x=center[0]-0.2, y=center[1]+0.6, text='x', color='white',
-                    horizontalalignment='center', verticalalignment='center',
-                    fontsize=9.5, fontweight='bold', transform=trans)
-        return [patch, text]
+#class ConfIntHandler(HandlerBase):
+#    def create_artists(self, legend, orig_handle, x0, y0, width, height, fontsize, trans):
+#        center = x0 + width / 2., y0 + height / 2.
+#        patch = Circle(center, radius=width / 5.,
+#                        color='red', transform=trans)
+#        text = Text(x=center[0]-0.2, y=center[1]+0.6, text='x', color='white',
+#                    horizontalalignment='center', verticalalignment='center',
+#                    fontsize=9.5, fontweight='bold', transform=trans)
+#        return [patch, text]
 
-class CandidateIntHandler(HandlerBase):
-    def create_artists(self, legend, orig_handle, x0, y0, width, height, fontsize, trans):
-        center = x0 + width / 2., y0 + height / 2.
-        patch = Circle(center, radius=width / 5.,
-                        color='red', transform=trans)
-        text = Text(x=center[0]-0.2, y=center[1]-0.3, text='?', color='white',
-                    horizontalalignment='center', verticalalignment='center',
-                    fontsize=9.5, fontweight='bold', transform=trans)
-        return [patch, text]
+#class CandidateIntHandler(HandlerBase):
+#    def create_artists(self, legend, orig_handle, x0, y0, width, height, fontsize, trans):
+#        center = x0 + width / 2., y0 + height / 2.
+#        patch = Circle(center, radius=width / 5.,
+#                        color='red', transform=trans)
+#        text = Text(x=center[0]-0.2, y=center[1]-0.3, text='?', color='white',
+#                    horizontalalignment='center', verticalalignment='center',
+#                    fontsize=9.5, fontweight='bold', transform=trans)
+#        return [patch, text]
 
 def plot_candidates_detection(low_res_median, raw_data, y_lim=(15850, 16000), x_lim=(9970, 10370), marker_size=3,
                               savename=None):
@@ -679,77 +442,3 @@ def plot_intersections(df_bounded_region, trips, extremity_clusters_df, extremit
         plt.show()
     plt.close()
 
-
-def plot_mass_transport_problem_paper(graph, nodes_info, trip=pd.DataFrame(), mx_df=pd.DataFrame(), zoom_start=None,
-                                      location=None,
-                                      dump=None, point=None):
-
-    label_font_size = 14
-    label_margin = 5
-
-    mapit = folium.Map(location=location, zoom_start=zoom_start,
-                       control_scale=False, tiles="cartodb positron")
-
-    if trip.shape[0] > 0:
-        for _, k in trip.groupby("TripLogId"):
-            points = [(lat, lon)
-                      for lat, lon in zip(k["Latitude"], k["Longitude"])]
-            folium.PolyLine(points, color='grey', weight=2,
-                            opacity=0.7).add_to(mapit)
-
-    for k in graph["Network"]["Edges"]:
-        points = k["coordinates"]
-        points = [(t[1], t[0]) for t in points]
-        folium.PolyLine(points, color="blue", weight=4,
-                        opacity=1).add_to(mapit)
-
-    for i, k in nodes_info[nodes_info["in_type"] == "load"].iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, color="green", fill_color='green',
-                            fill=True, fill_opacity=1, radius=5).add_to(mapit)
-        folium.Marker(location=p, icon=folium.DivIcon(
-            html='<div style="font-size: {}pt; color : green">%s</div>'.format(
-                label_font_size) % k["id"],
-            icon_anchor=(label_margin, -label_margin)
-        )).add_to(mapit)
-
-    for i, k in nodes_info[nodes_info["in_type"] == "dump"].iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, color="black", fill_color='black',
-                            fill=True, fill_opacity=1, radius=5).add_to(mapit)
-        folium.Marker(location=p, icon=folium.DivIcon(
-            html='<div style="font-size: {}pt; color : black">%s</div>'.format(
-                label_font_size) % k["id"],
-            icon_anchor=(label_margin, -label_margin)
-        )).add_to(mapit)
-
-    for i, k in nodes_info[nodes_info["in_type"] == "road"].iterrows():
-        p = [k["Latitude"], k["Longitude"]]
-        folium.CircleMarker(location=p, color="red", fill_color='red',
-                            fill=True, fill_opacity=1, radius=5).add_to(mapit)
-        folium.Marker(location=p, icon=folium.DivIcon(
-            html='<div style="font-size: {}pt; color : red">%s</div>'.format(
-                label_font_size) % k["id"],
-            icon_anchor=(label_margin, -label_margin)
-        )).add_to(mapit)
-
-    if mx_df.shape[0] > 0:
-        for i, k in mx_df.iterrows():
-            p = [k["ping_lat"], k["ping_lon"]]
-            folium.CircleMarker(location=p, fill=True, fill_color='yellow',
-                                color='yellow', radius=3, fill_opacity=1, weight=2).add_to(mapit)
-    if dump:
-        for i, k in trip.groupby("TripLogId"):
-            p = [k.iloc[0]["LoadLatitude"], k.iloc[0]["LoadLongitude"]]
-            folium.CircleMarker(location=p, fill=True, fill_color='pink',
-                                color='pink', radius=6, fill_opacity=1, weight=2).add_to(mapit)
-
-    if point != None:
-        folium.CircleMarker(location=point, fill=True, fill_color='pink',
-                            color='pink', radius=20, fill_opacity=1, weight=2).add_to(mapit)
-
-    mapit.fit_bounds(mapit.get_bounds(), padding=(20, 10))
-
-    # mapit.fit_bounds(mapit.get_bounds(), padding=(30, 30))
-    mapit.save("mass_transport_problem.html")
-    display(mapit)

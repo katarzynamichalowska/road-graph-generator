@@ -1,7 +1,7 @@
 # Road Graph Generator
 
 This repository contains the source code for the paper:  
-[Road Graph Generator: Mapping roads at construction sites from GPS data](https://arxiv.org/abs/2402.09919).
+[Michałowska, K., Holmestad, HMB, Riemer-Sørensen, S. Road Graph Generator: Mapping roads at construction sites from GPS data](https://arxiv.org/abs/2402.09919).
 
 ## Introduction
 

@@ -16,9 +16,17 @@ To use the Road Graph Generator, follow these steps:
 git clone https://github.com/katarzynamichalowska/road-graph-generator.git
 ```
 
-2. Install the required dependencies: 
+We recommend creating a new environment. If you are using Conda, please run:
+
 ```bash
-pip install requirements.txt
+conda create -n road_generator
+conda activate road_generator
+conda install pip
+```
+
+3. Install the required dependencies: 
+```bash
+pip install -r requirements.txt
 ```
 
 ## Usage

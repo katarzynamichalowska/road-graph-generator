@@ -3,14 +3,13 @@ import numpy as np
 import pandas as pd
 import re
 import geopy as gp
+from geopy.distance import geodesic
 import datetime
-import produceGraph.data_manipulation as dm
-from produceGraph.gpx_interpolate import interpolate_points_latlon
+import modules.data_manipulation as dm
+from modules.gpx_interpolate import interpolate_points_latlon
 from scipy.spatial import KDTree
-import random
 from tqdm import tqdm
 import networkx as nx
-from produceGraph.DBA_multivariate import performDBA, DTW
 import logging
 logger = logging.getLogger('producegraph')
 
@@ -32,8 +31,8 @@ def filter_short(df, groupby, minlength):
 
 def format_varnames(df):
     """ Part of preprocessing. Renames some variables and columns for data processing. """
-    df.columns = [re.sub('Trip\.', '', x) for x in df.columns]
-    df.columns = [re.sub('Coordinate\.', '', x) for x in df.columns]
+    df.columns = [re.sub(r'Trip\.', '', x) for x in df.columns]
+    df.columns = [re.sub(r'Coordinate\.', '', x) for x in df.columns]
     df.rename(columns={'TimeStamp': 'Timestamp'}, inplace=True, copy=True)
 
 
@@ -73,7 +72,7 @@ def latlon_to_xy(input_df, proj_info=None, latlon_varnames: list = ['Latitude', 
 
         # We now set up a local Cartesian coordinate system
         meters_to_angle = 1
-        d = gp.distance.geodesic(meters=meters_to_angle)
+        d = geodesic(meters=meters_to_angle)
         dist = d.destination(point=start, bearing=90)
         # 1 metre in "positive" longitude direction as vector in latlon space
         delta_x = abs(start.longitude - dist.longitude)

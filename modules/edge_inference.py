@@ -241,8 +241,5 @@ def generate_edges(segments_cluster_df, segments_df, min_segment_length=0):
                 })
 
                 edges.append(edge_dict)
-
-    print(f"Graph edges were generated. Number of edges: {len(edges)}")
-
     return edges
 

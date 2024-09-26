@@ -13,6 +13,7 @@ import networkx as nx
 from produceGraph.DBA_multivariate import performDBA, DTW
 import logging
 logger = logging.getLogger('producegraph')
+import sys
 
 
 def find_adjacent_nodes(trips_nodelists):
@@ -193,8 +194,6 @@ def divide_trips(df, thr_mins, thr_angle, thr_dist=None):
 
     return df['TripLogId']
 
-# TODO break this out into separate functions?
-
 
 def add_features(df, features=['timestamp_s', 'timestamp_delta', 'timestamp_delta_s', 'course_delta', 'dist_eucl_m']):
     """ 
@@ -242,10 +241,6 @@ def interpolate_trips(df, proj_info, spline_deg: int, resolution_m: float, add_v
     latlon_interp = add_meter_columns(latlon_interp, proj_info=proj_info)[0]
     latlon_interp = latlon_interp.reset_index(level=1, drop=True).reset_index()
     return latlon_interp
-
-
-def metres_to_coord(metres, origin, delta):
-    return metres * delta + origin
 
 
 def compute_dist_matrix(df1_ini, df2_ini, max_distance):
@@ -472,27 +467,29 @@ def preprocess_data(data_ini, proj_info,
 
     return df, trips
 
-
-def trips_processing(data, endpoint_threshold, remove_endpoints, variables=[]):
+def trips_processing(data, endpoint_threshold, remove_endpoints):
     """
     Initiates trip list from data, potentially removing the beginning and end of each trip.
 
     :param data: Input data from Ditio.
     :param endpoint_threshold: Minimum distance in m that the trip must traverse.
     :param remove_endpoints: If true, removes the ends of the trip.
-    :return A modified data frame with trips added.
+    :param variables: Variables to retain in the output dataframe.
+    :return: A modified data frame with trips added.
     """
 
     trips = data.sort_values('Timestamp').groupby(['TripLogId'])
     df_list = []
-    for _, group in trips:
+    
+    
+    # Wrap the trips in tqdm for progress tracking
+    for _, group in tqdm(trips, desc="Processing trips: ", total=len(trips)):
         # Add cumulative distance
         group['DistanceDriven'] = group['Distance'].cumsum()
 
         # Endpoint removal
         if remove_endpoints:
-            dist_min, dist_max = group['DistanceDriven'].min(
-            ), group['DistanceDriven'].max()
+            dist_min, dist_max = group['DistanceDriven'].min(), group['DistanceDriven'].max()
             lower = group['DistanceDriven'] > dist_min + endpoint_threshold
             upper = group['DistanceDriven'] < dist_max - endpoint_threshold
             if dist_max - endpoint_threshold < 0:
@@ -500,26 +497,27 @@ def trips_processing(data, endpoint_threshold, remove_endpoints, variables=[]):
             else:
                 # Filter to only get internal points
                 group = group[lower & upper]
+        
         # Append the trip data to the data frame
         df_list.append(group)
 
-    # TODO the section with the concatenation and the weird variables needs changing
     df = pd.concat(df_list, axis=0)
-    if len(variables) < 1:
-        variables = ['Latitude', 'Longitude', 'Altitude', 'theta', 'delta_theta', 'TripLogId', 'Timestamp', 'Speed', 'Course',
-                     'LoadLatitude', 'LoadLongitude', 'DumpLatitude', 'DumpLongitude', 'Distance', 'DistanceDriven',
-                     'LoadGeoFenceId', 'DumpGeoFenceId'] + ['LoadDateTime', 'DumpDateTime', 'MassTypeId', 'MassTypeName',
-                                                            'MassTypeMaterial', 'Quantity', 'LoaderMachineName']
-    variables = list(pd.Series(variables)[list(
-        pd.Series(variables).isin(df.columns))])
-    df = df[variables].reset_index(drop=True)
-    # TODO from Torkel - I don't follow this logic, but maybe a pandas-knower finds it reasonable. This function is called from preprocess_data in produce_graph_elemens,
-    #                    and the index will be reset later anyway
+
+    # This initially removes all columns that are not in the variable list
+    #if len(variables) < 1:
+    #    variables = ['Latitude', 'Longitude', 'Altitude', 'theta', 'delta_theta', 'TripLogId', 'Timestamp', 'Speed', 'Course',
+    #                 'LoadLatitude', 'LoadLongitude', 'DumpLatitude', 'DumpLongitude', 'Distance', 'DistanceDriven',
+    #                 'LoadGeoFenceId', 'DumpGeoFenceId'] + ['LoadDateTime', 'DumpDateTime', 'MassTypeId', 'MassTypeName',
+    #                                                        'MassTypeMaterial', 'Quantity', 'LoaderMachineName']
+    #        
+    #variables = list(pd.Series(variables)[list(pd.Series(variables).isin(df.columns))])
+    #df = df[variables].reset_index(drop=True)
 
     logger.debug(
         f"Removed {len(trips) - df['TripLogId'].unique().shape[0]} trips due to endpoint being under {endpoint_threshold}m away from startpoint.")
 
     return df
+
 
 
 def make_no_directional_nodes_info(adjacent_nodes_info):
@@ -742,8 +740,7 @@ def get_new_points(close_points, points, name):
 
 
 def df_turns_neighbour_similarity(df_in: pd.DataFrame, res_step,
-                                  neighbour_dist, similarity_thr,
-                                  plots=False) -> pd.DataFrame:
+                                  neighbour_dist, similarity_thr) -> pd.DataFrame:
     ''' Returns the cells were the track direction is different from the track direction of cells in neigbhouring cells'''
     df = df_in.copy()
     df['Course2'] = df['Course']
@@ -758,10 +755,7 @@ def df_turns_neighbour_similarity(df_in: pd.DataFrame, res_step,
     # return low_res_median
     low_res_median['similarity_median'] = neighbour_similarity(
         low_res_median, dist=neighbour_dist)
-    if plots:
-        kdeplot(df_low_res['similarity_median'])
-        plt.axvline(similarity_thr, linewidth=1, linestyle='--')
-        plt.show()
+
     # Take out the cells where the median direction is different from the neigbouring cells.
     low_res_median = low_res_median[low_res_median['similarity_median']
                                     > similarity_thr]
@@ -923,12 +917,10 @@ def mx_extremity_clusters(mx_df_ini, intersection_candidates, R, L, extremity_me
 
     mx_df_extremities['subcluster'] = [str(i) + '_' + str(j) for i, j in zip(mx_df_extremities['cl_idx'],
                                                                              mx_df_extremities['subcluster'])]
-    subcluster_sizes = mx_df_extremities.groupby(
-        ['cl_idx', 'subcluster']).size()
+    subcluster_sizes = mx_df_extremities.groupby(['cl_idx', 'subcluster']).size()
     subcluster_sizes = subcluster_sizes[subcluster_sizes >= min_cl_size]
     subcluster_sizes = subcluster_sizes.reset_index(level=1)
-    mx_df_extremities = mx_df_extremities[mx_df_extremities['subcluster'].isin(
-        subcluster_sizes['subcluster'])]
+    mx_df_extremities = mx_df_extremities[mx_df_extremities['subcluster'].isin(subcluster_sizes['subcluster'])]
 
     return mx_df_extremities
 

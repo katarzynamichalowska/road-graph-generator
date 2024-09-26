@@ -17,7 +17,7 @@ git clone https://github.com/katarzynamichalowska/road-graph-generator.git
 
 2. Install the required dependencies: 
 ```bash
-pip install requirements.txt`
+pip install requirements.txt
 ```
 
 ## Usage

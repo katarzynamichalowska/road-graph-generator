@@ -569,7 +569,6 @@ def plot_validating_intersections_schema(trips, valid_points_df, intersection_ca
         plt.show()
     plt.close()
 
-
 def create_subplot(ax, plot_type, **kwargs):
     if plot_type == 'rectangles':
         x_lim, y_lim, df_filtered = kwargs['x_lim'], kwargs['y_lim'], kwargs['df_filtered']

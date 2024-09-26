@@ -268,21 +268,19 @@ def produce_graph_elements(trips: pd.DataFrame,
     """
     Produce graph elements such as intersections, dump and load points.
 
-    :param data: Pandas dataframe containing the combined data of gps signals and metadata for the trips.
-    :type data: pd.DataFrame
-    :param cluster_info: see readData
+    :param trips: Pandas dataframe containing the combined data of GPS signals and metadata for the trips.
+    :type trips: pd.DataFrame
+    :param cluster_info: Dictionary containing information about the clusters.
     :type cluster_info: dict
-    :param proj_info: The proj_info dictionary gives the conversions between the xy coordinate system and the longitude
-    latitude. It is important to always use the the same proj_info after a xy coordinate system has been defined.
+    :param proj_info: Dictionary containing the conversions between the xy coordinate system and the longitude latitude.
     :type proj_info: dict
-    :param without_direction:
-    :type without_direction: bool
-    :param max_distance: Distance in meter for a point to be considered being close to an intersection
-    :type max_distance: float
-    :param interp_spline_deg: int
-    :type interp_spline_deg: int
-    :param interp_resolution_m:
-    :type interp_resolution_m: float
+    :param config: Configuration object containing various settings.
+    :type config: object
+    :param fast_alg: Flag indicating whether to use the fast algorithm for computing road trajectories.
+    :type fast_alg: bool, optional
+    :return: Tuple containing the cluster information, adjacent nodes information, edges, annotated trips,
+             distance matrix, original trips dataframe, mx_df, and relevant trips.
+    :rtype: tuple
     """
     max_distance = config.getint('max_distance')
 
@@ -309,7 +307,7 @@ def produce_graph_elements(trips: pd.DataFrame,
 
     # Return:
     # TODO: Move to documentation of function
-    # adjacent_nodes_info: Every set of two nodes (desicion points) that are connected by one or more trip gets an id.
+    # adjacent_nodes_info: Every set of two nodes (decision points) that are connected by one or more trips gets an id.
     # A frame with columns edge_id,(from_node, to_node), tripLogId
     # trips annotated: Same frame as trips, but for each row it is added [cl_idx] which node it is close to. If it not
     # within the max_distance of any node, cl_idx takes the value nan.
@@ -324,30 +322,30 @@ def produce_graph_elements(trips: pd.DataFrame,
     # To make the code run faster we only use 3 trips to calculate the trajectory between two nodes
     # TODO: Do we use three or one?
     if config.getboolean('without_direction'):
-        # Here we change the adjacent_nodes info such that it it is independent of direction. Entries that represents
-        # the same edge but with opposite direction is merged.
+        # Here we change the adjacent_nodes info such that it is independent of direction. Entries that represent
+        # the same edge but with opposite direction are merged.
         adjacent_nodes_info["nodes"] = adjacent_nodes_info["nodes"].apply(
             lambda x: tuple(sorted(x)))
         adjacent_nodes_info = rdm.make_no_directional_nodes_info(
             adjacent_nodes_info.copy())
-        # WARNING: At the moment we are only using the fast algoritm, it is not verified and tested without. The fast
+        # WARNING: At the moment we are only using the fast algorithm, it is not verified and tested without. The fast
         # algorithm just uses the shortest trip between two nodes to describe the edge.
-        # edges is a list of dataframe with columns edge_id, latitude,longitude. It describes the positions along the
-        # edge. The first and last position on the edge is the always in the nodes.
+        # edges is a list of dataframe with columns edge_id, latitude, longitude. It describes the positions along the
+        # edge. The first and last position on the edge is always in the nodes.
         edges, relevant_trips = rdm.compute_road_trajectories_without_direction(cluster_info,
                                                                                 trips_annotated=trips_annotated,
                                                                                 adjacent_nodes_info=adjacent_nodes_info,
                                                                                 fast_alg=fast_alg)
 
-    # WARNING: This option where we care about the direction between the nodes is currently not used, I (Helga) has not
-    # tested this option after changed has been made other places in the code.
+    # WARNING: This option where we care about the direction between the nodes is currently not used, I (Helga) have not
+    # tested this option after changes have been made in other places in the code.
     else:
         edges = rdm.compute_road_trajectories(trips_annotated=trips_annotated,
                                               adjacent_nodes_info=adjacent_nodes_info,
                                               edge_type='dba',
                                               max_trips_per_edge=3)
 
-    # mx_dist.drop(columns=["id"], inplace=True) #because id and cl_idx is the same
+    # mx_dist.drop(columns=["id"], inplace=True) #because id and cl_idx are the same
     return cluster_info, adjacent_nodes_info, edges, trips_annotated, mx_dist, trips, mx_df, relevant_trips
 
 
@@ -368,8 +366,7 @@ def produce_graph(proj_info, cluster_info_truth, adjacent_nodes_info, edges):
         return [round(t["Longitude"], 10), round(t["Latitude"], 10), round(t["z"], 10)]
 
     # Set up geographical coordinates in the cluster_info_truth dataframe
-    cluster_info_truth["coordinates"] = cluster_info_truth[[
-        "Longitude", "Latitude", "z"]].apply(_make_coordinate, axis=1)
+    cluster_info_truth["coordinates"] = cluster_info_truth[["Longitude", "Latitude", "z"]].apply(_make_coordinate, axis=1)
 
     # Use these to set up the nodes in the graph.
     out = {}
@@ -447,8 +444,7 @@ def get_nodes(data_ini, df_ini, trips_ini, proj_info, config):
         # Compute the distances from intersection candidates to neighboring points of interpolated trips. Returns a dictonary, mx_dist,  with keys being the index of the two frames
         max_distance = config_inter.getfloat("R") + config_inter.getfloat("L")
         # Returns a frame containg all points that are within the max_distance from canditate clusters
-        mx_dist = rdm.compute_dist_matrix(
-            intersection_candidates, trips[["x", "y"]], max_distance)
+        mx_dist = rdm.compute_dist_matrix(intersection_candidates, trips[["x", "y"]], max_distance)
         mx_df = rdm.preprocess_mx_dist(mx_dist, trips, intersection_candidates)
         # Compute the number of extremity clusters around each candidate intersection
         # TODO: This function returns faulty intersections with parallel roads.
@@ -458,19 +454,15 @@ def get_nodes(data_ini, df_ini, trips_ini, proj_info, config):
                                                       config_inter.getint('max_extremity_cluster_size'),
                                                       config_inter.getint('nr_trips'),
                                                       config_inter.getfloat('max_dist_from_intersection'))
-        intersection_candidates, mx_df_extremities = rdm.update_frames(
-            intersection_candidates, mx_df_extremities)
-        cluster_info = intersection_candidates[[
-            "x", "y", "Longitude", "Latitude", "Altitude"]].reset_index().rename(columns={"index": "id"})
+        intersection_candidates, mx_df_extremities = rdm.update_frames(intersection_candidates, mx_df_extremities)
+        cluster_info = intersection_candidates[["x", "y", "Longitude", "Latitude", "Altitude"]].reset_index().rename(columns={"index": "id"})
         cluster_info.rename(columns={"Altitude": "z"}, inplace=True)
 
     cluster_info["in_type"] = "road"
     cluster_info["Name"] = "Road"
     # First obtain the load and dump points.
-    load = get_load_points(
-        data, proj_info, radius=config["graph"].getint('merge_dump_pos'),)
-    dump = get_dropoff_points_db(
-        data, proj_info, radius=config["graph"].getint('merge_dump_pos'), eps=0.001)
+    load = get_load_points(data, proj_info, radius=config["graph"].getint('merge_dump_pos'),)
+    dump = get_dropoff_points_db(data, proj_info, radius=config["graph"].getint('merge_dump_pos'), eps=0.001)
     cluster_info = pd.concat([cluster_info, dump], ignore_index=True)
     cluster_info = pd.concat([cluster_info, load], ignore_index=True)
     cluster_info = cluster_info[["Latitude", "Longitude",
@@ -487,10 +479,8 @@ def produce_load_and_tasks(cluster_info):
     :param cluster_info:
     :return:
     """
-    loads_nodes = cluster_info[cluster_info["in_type"]
-                               == "load"][["id", "Name"]]
-    dump_nodes = cluster_info[cluster_info["in_type"]
-                              == "dump"][["id", "Name"]]
+    loads_nodes = cluster_info[cluster_info["in_type"]== "load"][["id", "Name"]]
+    dump_nodes = cluster_info[cluster_info["in_type"]== "dump"][["id", "Name"]]
     # right now there is only one loader per loading site. This dict is a temp solution to keep track of the ids
     d_to_loaders = {}
 

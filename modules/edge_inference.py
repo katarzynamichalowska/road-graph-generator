@@ -25,8 +25,8 @@ def cluster_roads(trips_relevant_segments, epsilon=10, min_samples=10, first_cl_
             return group
 
     subset_clustering = trips_relevant_segments.loc[trips_relevant_segments["cl_idx"].isna()]
-    subset_clustering = subset_clustering.groupby(
-        'SegmentId').apply(_trim_segment).reset_index(drop=True)
+    subset_clustering = subset_clustering.groupby('SegmentId').apply(_trim_segment).reset_index(drop=True)
+
     if not subset_clustering.empty:
         # Example parameters
         dbscan = DBSCAN(eps=epsilon, min_samples=min_samples)
@@ -52,13 +52,10 @@ def cluster_all_connected_roads(segments_df, node_segment_summary, epsilon=10, m
     max_cluster = 0
 
     for i, row in node_segment_summary.iterrows():
-        subset = segments_df.loc[segments_df["SegmentId"].isin(
-            row["segment_id_list"])]
-        subset = cluster_roads(
-            subset, epsilon=epsilon, min_samples=min_samples, first_cl_idx=first_cl_idx)
+        subset = segments_df.loc[segments_df["SegmentId"].isin(row["segment_id_list"])]
+        subset = cluster_roads(subset, epsilon=epsilon, min_samples=min_samples, first_cl_idx=first_cl_idx)
         if not subset["cluster"].empty and np.max(subset["cluster"]) > max_cluster:
             max_cluster = int(np.max(subset["cluster"]))
-        # max_cluster = int(np.max(subset["cluster"])) if not subset["cluster"].empty else -1
         subset = subset.sort_values(["SegmentId", "timestamp_s"])
         segments_cluster_list.append(subset)
         first_cl_idx = max_cluster + 1  # if max_cluster >= 0 else 0
@@ -89,13 +86,11 @@ def mark_trips_closest_to_intersection(trips_annotated):
         return group
 
     # Marks new group when 'dist' changes from NaN to not NaN
-    trips_annotated['group'] = (trips_annotated['dist'].notna(
-    ) & trips_annotated['dist'].shift().isna()).cumsum()
+    trips_annotated['group'] = (trips_annotated['dist'].notna() & trips_annotated['dist'].shift().isna()).cumsum()
     trips_annotated['is_min'] = False
 
     # Apply the function to each group, ensuring groups with valid 'dist' values are processed
-    trips_annotated = trips_annotated.groupby(['TripLogId', 'group']).apply(
-        _mark_minimal_distances).reset_index(drop=True)
+    trips_annotated = trips_annotated.groupby(['TripLogId', 'group']).apply(_mark_minimal_distances).reset_index(drop=True)
     return trips_annotated
 
 
@@ -140,8 +135,7 @@ def divide_trips_at_intersections(trips_annotated):
             segments.append(trip_data)
 
     # Concatenate all segments into a single DataFrame with a new 'SegmentId' column
-    segments_df = pd.concat(segments, keys=range(len(segments))).reset_index(
-        level=0).rename(columns={'level_0': 'SegmentId'}).reset_index(drop=True)
+    segments_df = pd.concat(segments, keys=range(len(segments))).reset_index(level=0).rename(columns={'level_0': 'SegmentId'}).reset_index(drop=True)
 
     return segments_df
 
@@ -154,8 +148,7 @@ def summarize_segments_and_nodes(segments_df):
     """
     # Return pairs of nodes that are connected by some segments. If a segment passes through only one node, only that node is mentioned.
     # For each segment, show what nodes does this segment cut through
-    segments_nodes = segments_df.loc[segments_df["is_min"]].groupby("SegmentId")[
-        "cl_idx"].unique()
+    segments_nodes = segments_df.loc[segments_df["is_min"]].groupby("SegmentId")["cl_idx"].unique()
 
     # Show unique node pairs (if a segment cuts through both) / nodes (if a segment cuts through only one)
     node_sets = sorted(list(set([tuple(sorted(s)) for s in segments_nodes])))
@@ -164,20 +157,16 @@ def summarize_segments_and_nodes(segments_df):
     for s in node_sets:
 
         if len(s) == 2:
-            segments_0 = segments_df.loc[(segments_df["cl_idx"] == s[0]) & (
-                segments_df["is_min"]), "SegmentId"].unique()
-            segments_1 = segments_df.loc[(segments_df["cl_idx"] == s[1]) & (
-                segments_df["is_min"]), "SegmentId"].unique()
+            segments_0 = segments_df.loc[(segments_df["cl_idx"] == s[0]) & (segments_df["is_min"]), "SegmentId"].unique()
+            segments_1 = segments_df.loc[(segments_df["cl_idx"] == s[1]) & (segments_df["is_min"]), "SegmentId"].unique()
             segments = [s for s in segments_0 if (s in segments_1)]
 
         elif len(s) == 1:
-            segments = segments_df.loc[(segments_df["cl_idx"] == s[0]) & (
-                segments_df["is_min"]), "SegmentId"].unique()
+            segments = segments_df.loc[(segments_df["cl_idx"] == s[0]) & (segments_df["is_min"]), "SegmentId"].unique()
 
         segment_ids_list.append(segments)
 
-    node_segment_summary = pd.DataFrame(
-        [(s,) for s in node_sets], columns=["nodes"])
+    node_segment_summary = pd.DataFrame([(s,) for s in node_sets], columns=["nodes"])
     node_segment_summary["segment_id_list"] = segment_ids_list
 
     return node_segment_summary
@@ -216,8 +205,7 @@ def generate_edges(segments_cluster_df, segments_df, min_segment_length=0):
         return close_to_median.idxmin()
 
     def _produce_edge(segments_subset, segments_df, min_segment_length):
-        segment_length = segments_subset.groupby(
-            "SegmentId").count()["Latitude"]
+        segment_length = segments_subset.groupby("SegmentId").count()["Latitude"]
         segment_length = segment_length.loc[segment_length > min_segment_length]
 
         if not segment_length.empty:
@@ -231,7 +219,7 @@ def generate_edges(segments_cluster_df, segments_df, min_segment_length=0):
     edges = []
     
     unique_clusters = segments_cluster_df["mode_cluster"].unique()
-    for i, c in enumerate(tqdm(unique_clusters, desc="Generating edges from clusters: ")):
+    for i, c in enumerate(tqdm(unique_clusters, desc="Generating edges from clusters")):
         if c != -1:
             segments_subset = segments_cluster_df.loc[segments_cluster_df["mode_cluster"] == c]
             chosen_edge = _produce_edge(segments_subset, segments_df, min_segment_length=min_segment_length)

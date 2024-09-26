@@ -1,6 +1,6 @@
 # Road Graph Generator
 
-This repository contains the source code for the paper: 
+This repository contains the source code for the paper:  
 [Road Graph Generator: Mapping roads at construction sites from GPS data](https://arxiv.org/abs/2402.09919).
 
 ## Introduction
@@ -31,7 +31,7 @@ python generate_graph.py
 
 ## Contributors
 
-We want to thank Helga Holmestad for her invaluable work on the code development of this project: 
+We want to thank Helga Holmestad for her invaluable contribution to this project:  
 [GitHub: Helga Holmestad](https://github.com/helgaholmestadsintef).
 
 

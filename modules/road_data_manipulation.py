@@ -363,22 +363,19 @@ def cut_by_nodes_without_direction(trips_annotated, nodes):
         trips_annotated = trips_annotated.reset_index(level='TripLogId', drop=True)
         dmin = trips_annotated.groupby("TripLogId")["timestamp_s"].min().to_frame().to_dict()["timestamp_s"]
         trips_annotated["timestamp_s"] = trips_annotated[["TripLogId", "timestamp_s"]].apply(lambda x: x["timestamp_s"]-dmin.get(x["TripLogId"]), axis=1)
-        trips_annotated["TripLogId"] = trips_annotated["TripLogId"]  # +"first"
+        trips_annotated["TripLogId"] = trips_annotated["TripLogId"]
 
     reverse_node = (nodes[1], nodes[0])
     trips_annotated_back = trips_annotated_back.groupby('TripLogId').apply(
         lambda trip: cut_by_nodes_one_trip(trip, reverse_node))
+    
     if trips_annotated_back.shape[0] != 0:
-        trips_annotated_back = trips_annotated_back.reset_index(
-            level='TripLogId', drop=True)
-        dmax = trips_annotated_back.groupby(
-            "TripLogId")["timestamp_s"].max().to_frame().to_dict()["timestamp_s"]
-        trips_annotated_back["timestamp_s"] = trips_annotated_back[["TripLogId", "timestamp_s"]].apply(
-            lambda x: dmax.get(x["TripLogId"])-x["timestamp_s"], axis=1)
-        # +"second"
+        trips_annotated_back = trips_annotated_back.reset_index(level='TripLogId', drop=True)
+        dmax = trips_annotated_back.groupby("TripLogId")["timestamp_s"].max().to_frame().to_dict()["timestamp_s"]
+        trips_annotated_back["timestamp_s"] = trips_annotated_back[["TripLogId", "timestamp_s"]].apply(lambda x: dmax.get(x["TripLogId"])-x["timestamp_s"], axis=1)
         trips_annotated_back["TripLogId"] = trips_annotated_back["TripLogId"]
-    trips_annotated = pd.concat(
-        [trips_annotated, trips_annotated_back], ignore_index=True)
+    trips_annotated = pd.concat([trips_annotated, trips_annotated_back], ignore_index=True)
+
     if trips_annotated.empty:
         return trips_annotated.copy()
     return trips_annotated.copy()
@@ -454,9 +451,9 @@ def preprocess_data(data_ini, proj_info,
         df = dm.rmv_dupl(df, v)
     # Again filter short trips since after possible removing duplicates
     df = filter_short(df, groupby='TripLogId', minlength=min_trip_length)
+    df['theta2'] = np.radians(np.where(df['Course'] > 180, df['Course'] - 180, df['Course']))
 
-    # Interpolation of the position using the spline method. Returns a dataframe with the columns
-    # ['TripLogId', 'Latitude', 'Longitude', 'Speed', 'Distance','timestamp_s', 'x', 'y']
+
     trips = interpolate_trips(df, proj_info,
                               interp_spline_deg,
                               interp_resolution_m,
@@ -494,24 +491,10 @@ def trips_processing(data, endpoint_threshold, remove_endpoints):
             if dist_max - endpoint_threshold < 0:
                 continue  # The candidate trip was too short
             else:
-                # Filter to only get internal points
-                group = group[lower & upper]
-        
-        # Append the trip data to the data frame
+                group = group[lower & upper]        
         df_list.append(group)
 
     df = pd.concat(df_list, axis=0)
-
-    # This initially removes all columns that are not in the variable list
-    #if len(variables) < 1:
-    #    variables = ['Latitude', 'Longitude', 'Altitude', 'theta', 'delta_theta', 'TripLogId', 'Timestamp', 'Speed', 'Course',
-    #                 'LoadLatitude', 'LoadLongitude', 'DumpLatitude', 'DumpLongitude', 'Distance', 'DistanceDriven',
-    #                 'LoadGeoFenceId', 'DumpGeoFenceId'] + ['LoadDateTime', 'DumpDateTime', 'MassTypeId', 'MassTypeName',
-    #                                                        'MassTypeMaterial', 'Quantity', 'LoaderMachineName']
-    #        
-    #variables = list(pd.Series(variables)[list(pd.Series(variables).isin(df.columns))])
-    #df = df[variables].reset_index(drop=True)
-
     logger.debug(
         f"Removed {len(trips) - df['TripLogId'].unique().shape[0]} trips due to endpoint being under {endpoint_threshold}m away from startpoint.")
 
@@ -522,9 +505,6 @@ def calculate_neighbour_similarity(df_in: pd.DataFrame, res_step,neighbour_dist,
     ''' Returns the cells were the track direction is different from the track direction of cells in neigbhouring cells'''
 
     df = df_in.copy()
-    df['Course2'] = df['Course']
-    df.loc[df['Course'] > 180, 'Course2'] = df['Course']-180
-    df['theta2'] = np.radians(df['Course2'])
 
     # adding low resolution and using the median value as the aggregated value
     df["x_"+str(res_step)] = change_resolution(df["x"], step=res_step)
@@ -548,11 +528,11 @@ def neighbour_similarity(df, dist):
     points = closest_points_list(df, ["x", "y"], dist)
     for i in range(len(points)):
         value1 = float(df.loc[df.index == df.index[i], "theta2"])
-        values_neighbors = np.array(
-            df.loc[df.index.isin(pd.Series(points[i])), "theta2"])
+        values_neighbors = np.array(df.loc[df.index.isin(pd.Series(points[i])), "theta2"])
         dist = np.sqrt(((value1 - values_neighbors)**2).sum())
         similarities.append(dist)
     return similarities
+
 
 
 def closest_points_list(df, geovariables, dist):

@@ -28,4 +28,16 @@ To generate road graphs from GPS data, run the following command:
 python generate_graph.py
 ```
 
+## Citing
+
+If you use Road Graph Generator in an academic paper, please cite as:
+
+```bash
+@article{michalowska2024road,
+  title={{Road Graph Generator}: {M}apping roads at construction sites from {GPS} data},
+  author={Micha{\l}owska, Katarzyna and Holmestad, Helga Margrete Bodahl and Riemer-S{\o}rensen, Signe},
+  journal={arXiv preprint arXiv:2402.09919},
+  year={2024}
+}
+```
 

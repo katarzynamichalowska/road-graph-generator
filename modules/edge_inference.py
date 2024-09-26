@@ -99,9 +99,6 @@ def mark_trips_closest_to_intersection(trips_annotated):
     return trips_annotated
 
 
-from tqdm import tqdm
-import pandas as pd
-
 def divide_trips_at_intersections(trips_annotated):
     """
     Divides the trips data into smaller segments. Each trip is cut when it passes next to an intersection.
@@ -111,8 +108,7 @@ def divide_trips_at_intersections(trips_annotated):
     """
     segments = []
 
-    # Add tqdm progress bar to track trips being processed
-    for trip_id, trip_data in tqdm(trips_annotated.groupby('TripLogId'), desc="Processing trips"):
+    for trip_id, trip_data in tqdm(trips_annotated.groupby('TripLogId'), desc="Dividing trips into segments:"):
         start_idx = 0
         counter = 0
 

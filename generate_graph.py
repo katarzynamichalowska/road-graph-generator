@@ -75,8 +75,6 @@ R, R2 = [float(item.strip()) for item in config_inter.get("R").split(',')]
 y_lim, x_lim = (15800, 16100), (9680, 10400)
 pl.plot_intersections_with_radii(trips=trips, mx_df_extremities=None, intersection_candidates=intersection_candidates, radii_list=[R, R + config_inter.getfloat("L")],
                                  y_lim=y_lim, x_lim=x_lim, savename="candidates.pdf")
-print("Candidates with radii plotted")
-
 
 max_distance = 125  # config_inter.getfloat("R") + config_inter.getfloat("L")
 # Returns a frame containg all points that are within the max_distance from canditate clusters
@@ -121,8 +119,7 @@ pl.plot_intersections_with_radii(trips=trips,  # mx_df_extremities=valid_points_
                                  extremity_clusters=extremity_clusters_df, intersection_candidates=intersection_candidates,
                                  confirmed_intersections=confirmed_intersections,
                                  radii_list=[R + L],
-                                 y_lim=y_lim, x_lim=x_lim, marker_size=1, title="Validation with $R=30$", savename="validation_R_30.pdf")
-print("Validation with R=30 plotted")
+                                 y_lim=y_lim, x_lim=x_lim, marker_size=1, title=f"Validation with $R={R}$", savename=f"validation_R_{R}.pdf")
 
 confirmed_intersections = intersection_candidates.loc[((intersection_candidates["x"] > 11500) & (intersection_candidates["x"] < 11800) & (
     intersection_candidates["y"] < 15100)) | ((intersection_candidates["y"] > 14650) & (intersection_candidates["y"] < 14800))]
@@ -130,20 +127,17 @@ pl.plot_intersections_with_radii(trips=trips,  # mx_df_extremities=valid_points_
                                  extremity_clusters=extremity_clusters_df2, intersection_candidates=intersection_candidates,
                                  confirmed_intersections=confirmed_intersections,
                                  radii_list=[R2, R2 + L],
-                                 y_lim=y_lim, x_lim=x_lim, marker_size=1, title="Validation with $R=100$", savename="validation_R_100.pdf")
-
-print("Validation with R=100 plotted")
+                                 y_lim=y_lim, x_lim=x_lim, marker_size=1, title=f"Validation with $R={R2}$", savename=f"validation_R_{R2}.pdf")
 
 df_bounded_region = low_res_median[(low_res_median['x_5'] >= x_lim[0]) & (low_res_median['x_5'] + 5 <= x_lim[1]) &
                              (low_res_median['y_5'] >= y_lim[0]) & (low_res_median['y_5'] + 5 <= y_lim[1])]
 confirmed_intersections = intersection_candidates.loc[intersection_candidates["x"] > 10200]
 
-print("Bounded region computed")
 
 pl.plot_intersections(df_bounded_region=df_bounded_region, trips=trips, extremity_clusters_df=extremity_clusters_df, extremity_clusters_df2=extremity_clusters_df2,
                        confirmed_intersections1=confirmed_intersections, confirmed_intersections2=confirmed_intersections, 
-                       intersection_candidates=intersection_candidates, x_lim=x_lim, y_lim=y_lim, R=30, R2=100, L=20, savename="bounded_region.pdf")
-print("Intersections plotted")
+                       intersection_candidates=intersection_candidates, x_lim=x_lim, y_lim=y_lim, R=30, R2=100, L=20, 
+                       savename="bounded_region.pdf")
 
 mx_df_extremities = rdm.mx_extremity_clusters(mx_df_ini=mx_df, intersection_candidates=intersection_candidates,
                                               R=R, L=L,

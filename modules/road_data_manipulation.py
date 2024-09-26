@@ -314,10 +314,10 @@ def cluster_info_trips(cluster_info_ini, mx_df_ini, max_dist_from_cluster):
     return cluster_info
 
 
-def find_relations(trips_ini, cluster_info_ini, mx_dist_ini, max_dist_from_cluster):
-    """finds which nodes are visisted after eachother and collects the information about the edges in adjacent_nodes_info. Populates the trip information with information of which nodes the trip is close to and returns it as trips annotated"""
+def find_relations(trips_ini, mx_dist_ini):
+    """finds which nodes are visisted after eachother and collects the information about the edges in adjacent_nodes_info. 
+    Populates the trip information with information of which nodes the trip is close to and returns it as trips annotated"""
     trips = trips_ini.copy()
-    cluster_info = cluster_info_ini.copy()
     mx_dist = mx_dist_ini.copy()
 
     # Remove single-point trips
@@ -345,6 +345,7 @@ def find_relations(trips_ini, cluster_info_ini, mx_dist_ini, max_dist_from_clust
     adjacent_nodes_info['edge_id'] = ['e_' + str(i+1) for i in adjacent_nodes_info.index]
     adjacent_nodes_info.columns = ['nodes', 'trips', 'edge_id']
     adjacent_nodes_info = adjacent_nodes_info[['edge_id', 'nodes', 'trips']]
+    
     return adjacent_nodes_info, trips
 
 

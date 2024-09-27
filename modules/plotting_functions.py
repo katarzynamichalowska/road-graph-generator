@@ -411,8 +411,8 @@ def plot_intersections(df_bounded_region, trips, extremity_clusters_df, extremit
         ax.set_aspect('equal', adjustable='box')
 
     axs[0, 0].set_title("Directional dissimilarity")
-    axs[0, 1].set_title("Intersection verification ($R=30$)")
-    axs[1, 0].set_title("Intersection verification ($R=100$)")
+    axs[0, 1].set_title(f"Intersection verification ($R={R}$, $L={L}$)")
+    axs[1, 0].set_title(f"Intersection verification ($R={R2}$, $L={L}$)")
     axs[1, 1].set_title("Confirmed intersections")
     axs[1, 0].set_xlabel("x (m)")
     axs[1, 1].set_xlabel("x (m)")

@@ -148,7 +148,7 @@ def coord_to_metres(coord, origin, delta):
     return ((coord - origin) / delta).astype(int)  # TODO why is this an int???
 
 
-def divide_trips(df, thr_mins, thr_angle, thr_dist=None):
+def divide_trips(df, thr_minutes, thr_degrees, thr_metres=None, trip_id='TripLogId'):
     """
     Divide trips into multiple shorter trips.
     :param thr_mins: divide into two trips if the difference in time between pings is larger than the threshold (in mins).
@@ -160,37 +160,34 @@ def divide_trips(df, thr_mins, thr_angle, thr_dist=None):
         return np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
     def _new_ids(df, cumsum_var, connection):
-        series_ids = df['TripLogId']
+        series_ids = df[trip_id]
         series_nrs = df[cumsum_var].cumsum().astype('str')
         new = series_ids + connection + series_nrs
         return new
 
     def _apply_new_ids(df, cumsum_var, connection):
-        trip_ids = np.array(df.groupby('TripLogId').apply(lambda x: _new_ids(x, cumsum_var, connection)
-                                                          if x[cumsum_var].sum() > 0 else x['TripLogId']))
+        trip_ids = np.array(df.groupby(trip_id).apply(lambda x: _new_ids(x, cumsum_var, connection)
+                                                          if x[cumsum_var].sum() > 0 else x[trip_id]))
         return trip_ids
 
     df = df.copy()
     df['large_timedelta'] = np.array(
-        df['timestamp_delta'] > datetime.timedelta(minutes=thr_mins))
-    df['TripLogId'] = _apply_new_ids(df, 'large_timedelta', connection='_t')
-    if 'course_delta' in df.columns:
-        df['large_coursedelta'] = np.array(abs(df['course_delta']) > thr_angle)
-        df['TripLogId'] = _apply_new_ids(
-            df, 'large_coursedelta', connection='_c')
-        df['course_delta'] = change_first_in_group(
-            df=df, by='TripLogId', variable='course_delta', first_val=0)
-    if thr_dist is not None:
-        df['x_prev'] = df.groupby('TripLogId')['x'].shift(1)
-        df['y_prev'] = df.groupby('TripLogId')['y'].shift(1)
-        df['EuclideanDistance'] = df.apply(lambda row: _eucl(
-            row['x_prev'], row['y_prev'], row['x'], row['y']) if not pd.isnull(row['x_prev']) else 0, axis=1)
+        df['timestamp_delta'] > datetime.timedelta(minutes=thr_minutes))
+    df[trip_id] = _apply_new_ids(df, 'large_timedelta', connection='_t')
+    if thr_degrees>0:        
+        df['large_coursedelta'] = np.array(abs(df['course_delta']) > thr_degrees)
+        df[trip_id] = _apply_new_ids(df, 'large_coursedelta', connection='_c')
+        df['course_delta'] = change_first_in_group(df=df, by=trip_id, variable='course_delta', first_val=0)
+    if (thr_metres is not None) and (thr_metres > 0):
+        df['x_prev'] = df.groupby(trip_id)['x'].shift(1)
+        df['y_prev'] = df.groupby(trip_id)['y'].shift(1)
+        df['EuclideanDistance'] = df.apply(lambda row: _eucl(row['x_prev'], row['y_prev'], row['x'], row['y']) if not pd.isnull(row['x_prev']) else 0, axis=1)
         df = df.drop(columns=['x_prev', 'y_prev'])
-        df['DistanceDiff'] = df.groupby('TripLogId')['Distance'].diff().abs()
-        df['large_distdiff'] = df['DistanceDiff'] > thr_dist
-        df['TripLogId'] = _apply_new_ids(df, 'large_distdiff', connection='_d')
+        df['DistanceDiff'] = df.groupby(trip_id)['Distance'].diff().abs()
+        df['large_distdiff'] = df['DistanceDiff'] > thr_metres
+        df[trip_id] = _apply_new_ids(df, 'large_distdiff', connection='_d')
 
-    return df['TripLogId']
+    return df[trip_id]
 
 
 def add_features(df, features=['timestamp_s', 'timestamp_delta', 'timestamp_delta_s', 'course_delta', 'dist_eucl_m']):
@@ -295,8 +292,11 @@ def dist_matrix_to_df(mx):
     return mx_df
 
 
-def cluster_info_trips(cluster_info_ini, mx_df_ini, max_dist_from_cluster):
-    ''' Adds a column giving the TripLogId of all trips that passes closer than "max_dist_from_cluster" from a node'''
+def assign_triplog_to_clusters(cluster_info_ini, mx_df_ini, max_dist_from_cluster):
+    ''' 
+    Assigns a list of unique TripLogIds to clusters that have trips passing within the specified proximity threshold. 
+    The proximity threshold defines the maximum distance from a cluster node that a trip must pass to be considered.
+    '''    
     cluster_info = cluster_info_ini.copy()
     mx_df = mx_df_ini.copy()
     mx_df_close_to_cluster = mx_df[mx_df['dist'] <= max_dist_from_cluster]
@@ -307,7 +307,7 @@ def cluster_info_trips(cluster_info_ini, mx_df_ini, max_dist_from_cluster):
     return cluster_info
 
 
-def find_relations(trips_ini, mx_dist_ini):
+def identify_adjacent_node_trips(trips_ini, mx_dist_ini):
     """finds which nodes are visisted after eachother and collects the information about the edges in adjacent_nodes_info. 
     Populates the trip information with information of which nodes the trip is close to and returns it as trips annotated"""
     trips = trips_ini.copy()
@@ -318,21 +318,19 @@ def find_relations(trips_ini, mx_dist_ini):
 
     # make a list of lists giving the sequence of the visited nodes for each trip.
     sorted_mx_dist = mx_dist.sort_values(by=["TripLogId", "timestamp_s"])
-    trips_nodelists = list(sorted_mx_dist.groupby(
-        "TripLogId")["cl_idx"].apply(list))
+    trips_nodelists = list(sorted_mx_dist.groupby("TripLogId")["cl_idx"].apply(list))
     trips_nodelists = [dm.retain_change_only(x) for x in trips_nodelists]
+    adjacent_nodes = find_adjacent_nodes(trips_nodelists=trips_nodelists)
+
 
     # adds information about the nodes to the trips
     trips = trips.reset_index()
     trips = trips.rename(columns={"index": "ping_idx"})
-    trips_annotated = trips.merge(mx_dist[["cl_idx", "ping_idx", "dist"]], on="ping_idx", how="inner")
-
-    adjacent_nodes = find_adjacent_nodes(trips_nodelists=trips_nodelists)
-    trips = trips.merge(trips_annotated[['cl_idx', "ping_idx", "dist"]], on="ping_idx", how='outer')
+    trips_with_node_info = trips.merge(mx_dist[["cl_idx", "ping_idx", "dist"]], on="ping_idx", how="inner")
+    trips = trips.merge(trips_with_node_info[['cl_idx', "ping_idx", "dist"]], on="ping_idx", how='outer')
 
     # Returns True only if the nodes are visited directly one after another in the trip
-    trips_adjacent_nodes = find_trips_adjacent_nodes(
-        trips_annotated, trips_nodelists, adjacent_nodes)
+    trips_adjacent_nodes = list_tripids_between_adjacent_nodes(trips_with_node_info, trips_nodelists, adjacent_nodes)
 
     adjacent_nodes_info = pd.concat([pd.Series(adjacent_nodes), pd.Series(trips_adjacent_nodes)], axis=1)
     adjacent_nodes_info['edge_id'] = ['e_' + str(i+1) for i in adjacent_nodes_info.index]
@@ -342,10 +340,10 @@ def find_relations(trips_ini, mx_dist_ini):
     return adjacent_nodes_info, trips
 
 
-def find_trips_adjacent_nodes(trips, trips_nodelists, adjacent_nodes):
+def list_tripids_between_adjacent_nodes(trips, trips_nodelists, adjacent_nodes):
     """
     Find trips in which the adjacent nodes are visited directly one after another.
-    :return trips_adjacent_notes: a list of lists of trip_ids, in the order as in adjacent_nodes
+    :return trips_adjacent_nodes: a list of lists of trip_ids, in the order as in adjacent_nodes
     """
     trips_adjacent_nodes = list(map(lambda node_pair: trips.TripLogId.unique()[(list(map(lambda trip:
                                                                                          dm.list_in_list(
@@ -354,55 +352,82 @@ def find_trips_adjacent_nodes(trips, trips_nodelists, adjacent_nodes):
     return trips_adjacent_nodes
 
 
-def cut_by_nodes_without_direction(trips_annotated, nodes):
-    trips_annotated_back = trips_annotated.copy()
-    trips_annotated = trips_annotated.groupby('TripLogId').apply(
-        lambda trip: cut_by_nodes_one_trip(trip, nodes))
-    if trips_annotated.shape[0] != 0:
-        trips_annotated = trips_annotated.reset_index(level='TripLogId', drop=True)
-        dmin = trips_annotated.groupby("TripLogId")["timestamp_s"].min().to_frame().to_dict()["timestamp_s"]
-        trips_annotated["timestamp_s"] = trips_annotated[["TripLogId", "timestamp_s"]].apply(lambda x: x["timestamp_s"]-dmin.get(x["TripLogId"]), axis=1)
-        trips_annotated["TripLogId"] = trips_annotated["TripLogId"]
+def cut_by_nodes_without_direction(trips_with_node_info, nodes):
+    trips_with_node_info_reverse = trips_with_node_info.copy()
+    trips_with_node_info = trips_with_node_info.groupby('TripLogId').apply(
+        lambda trip: extract_trip_segments_between_node_pairs_one_trip(trip, nodes))
+    if trips_with_node_info.shape[0] != 0:
+        trips_with_node_info = trips_with_node_info.reset_index(level='TripLogId', drop=True)
+        dmin = trips_with_node_info.groupby("TripLogId")["timestamp_s"].min().to_frame().to_dict()["timestamp_s"]
+        trips_with_node_info["timestamp_s"] = trips_with_node_info[["TripLogId", "timestamp_s"]].apply(lambda x: x["timestamp_s"]-dmin.get(x["TripLogId"]), axis=1)
+        trips_with_node_info["TripLogId"] = trips_with_node_info["TripLogId"]
 
     reverse_node = (nodes[1], nodes[0])
-    trips_annotated_back = trips_annotated_back.groupby('TripLogId').apply(
-        lambda trip: cut_by_nodes_one_trip(trip, reverse_node))
+    trips_with_node_info_reverse = trips_with_node_info_reverse.groupby('TripLogId').apply(
+        lambda trip: extract_trip_segments_between_node_pairs_one_trip(trip, reverse_node))
     
-    if trips_annotated_back.shape[0] != 0:
-        trips_annotated_back = trips_annotated_back.reset_index(level='TripLogId', drop=True)
-        dmax = trips_annotated_back.groupby("TripLogId")["timestamp_s"].max().to_frame().to_dict()["timestamp_s"]
-        trips_annotated_back["timestamp_s"] = trips_annotated_back[["TripLogId", "timestamp_s"]].apply(lambda x: dmax.get(x["TripLogId"])-x["timestamp_s"], axis=1)
-        trips_annotated_back["TripLogId"] = trips_annotated_back["TripLogId"]
-    trips_annotated = pd.concat([trips_annotated, trips_annotated_back], ignore_index=True)
+    if trips_with_node_info_reverse.shape[0] != 0:
+        trips_with_node_info_reverse = trips_with_node_info_reverse.reset_index(level='TripLogId', drop=True)
+        dmax = trips_with_node_info_reverse.groupby("TripLogId")["timestamp_s"].max().to_frame().to_dict()["timestamp_s"]
+        trips_with_node_info_reverse["timestamp_s"] = trips_with_node_info_reverse[["TripLogId", "timestamp_s"]].apply(lambda x: dmax.get(x["TripLogId"])-x["timestamp_s"], axis=1)
+        trips_with_node_info_reverse["TripLogId"] = trips_with_node_info_reverse["TripLogId"]
+    trips_with_node_info = pd.concat([trips_with_node_info, trips_with_node_info_reverse], ignore_index=True)
 
-    if trips_annotated.empty:
-        return trips_annotated.copy()
-    return trips_annotated.copy()
-
-
-def cut_by_nodes(trips_annotated, nodes):
-    trips_annotated = trips_annotated.groupby('TripLogId').apply(
-        lambda trip: cut_by_nodes_one_trip(trip, nodes))
-    trips_annotated = trips_annotated.reset_index(level='TripLogId', drop=True)
-    return trips_annotated.copy()
+    if trips_with_node_info.empty:
+        return trips_with_node_info.copy()
+    return trips_with_node_info.copy()
 
 
-def cut_by_nodes_one_trip(one_trip, nodes):
-    prev_idx = one_trip['cl_idx'].ffill()
-    next_idx = one_trip['cl_idx'].bfill()
-    one_trip = one_trip[(prev_idx == nodes[0]) & (next_idx == nodes[1])]
-    return one_trip
+def extract_trip_segments_between_node_pairs(trips_with_node_info, nodes):
+    """
+    Extracts segments of trips that lie between specified pairs of nodes.
+
+    Parameters:
+    - trips_with_node_info (DataFrame): A DataFrame containing trip information with 
+      GPS points and their corresponding node indices.
+    - node_pairs (list of tuples): A list of tuples, where each tuple contains two 
+      node indices representing the start and end of the segment to extract.
+
+    Returns:
+    - DataFrame: A DataFrame containing only the trip segments that lie between the specified 
+      node pairs.
+    """
+    trips_with_node_info = trips_with_node_info.groupby('TripLogId').apply(
+        lambda trip: extract_trip_segments_between_node_pairs_one_trip(trip, nodes))
+    trips_with_node_info = trips_with_node_info.reset_index(level='TripLogId', drop=True)
+    return trips_with_node_info.copy()
+
+
+def extract_trip_segments_between_node_pairs_one_trip(one_trip_with_node_info, nodes):
+    """
+    Extracts the segment of a trip that is located between the specified pair of nodes.
+
+    Parameters:
+    - trip (DataFrame): A DataFrame containing the details of a single trip, including 
+      a column 'cl_idx' representing indices of nodes that are nearby.
+    - node_pair (tuple): A tuple containing two node indices, where the first node is 
+      the starting point and the second is the endpoint.
+
+    Returns:
+    - DataFrame: A DataFrame of the trip segment that is directly between the specified 
+      nodes. Segments are retained only if the preceding node is equal to the first node 
+      and the following node is equal to the second node.
+    """
+    prev_idx = one_trip_with_node_info['cl_idx'].ffill()                                   # Series with sprevious "closest node" to the end of the trip
+    next_idx = one_trip_with_node_info['cl_idx'].bfill()                                   # Series with next "closest node" to the start of the trip
+    one_trip_with_node_info = one_trip_with_node_info[(prev_idx == nodes[0]) & (next_idx == nodes[1])]    # Keep only the segments that are between the specified nodes
+    return one_trip_with_node_info
 
 
 def preprocess_data(data_ini, proj_info,
-                    endpoint_threshold,
+                    dist_endpoints_trim,
                     remove_endpoints,
-                    interp_spline_deg,
-                    interp_resolution_m,
-                    min_trip_length,
-                    divide_trip_thr_mins,
-                    divide_trip_thr_angle,
-                    divide_trip_thr_dist=None,
+                    interpolation_spline_degrees,
+                    interpolation_resolution_metres,
+                    min_nr_points_trip,
+                    divide_trip_threshold_minutes,
+                    divide_trip_threshold_degrees,
+                    divide_trip_threshold_metres=None,
                     add_vars_trips=[],  # TODO -- This parameter doesn't really feel good
                     ):
     """
@@ -427,9 +452,9 @@ def preprocess_data(data_ini, proj_info,
     remove_incorrect_rows(data)
     data = remove_idle_vehicles(data)
     # Remove all short trips. minlength is given by number of gps pings
-    data = filter_short(data, groupby='TripLogId', minlength=min_trip_length)
+    data = filter_short(data, groupby='TripLogId', minlength=min_nr_points_trip)
 
-    df = trips_processing(data, endpoint_threshold, remove_endpoints)
+    df = trips_processing(data, dist_endpoints_trim, remove_endpoints)
 
     df, proj_info = add_meter_columns(df, proj_info=proj_info)
     # adding features of delta values between gps pings
@@ -438,29 +463,32 @@ def preprocess_data(data_ini, proj_info,
 
     # Divide trips if a the vehicle stops or turns too suddenly.
     df['TripLogId'] = divide_trips(
-        df, divide_trip_thr_mins, divide_trip_thr_angle, divide_trip_thr_dist)
+        df, divide_trip_threshold_minutes, divide_trip_threshold_degrees, divide_trip_threshold_metres)
 
     df = add_features(df, features=['timestamp_s'])
     # , 'timestamp_delta', 'timestamp_delta_s', 'course_delta', 'dist_eucl_m'])
     # Filter out short trips again since new short trips could have been made by divide trips.
-    df = filter_short(df, groupby='TripLogId', minlength=min_trip_length)
+    df = filter_short(df, groupby='TripLogId', minlength=min_nr_points_trip)
     # Filter out if two consecutive variables (here Latitude and Longitude) have exactly the same value. If so, only the
     # first one is kept
     for v in add_vars_trips+['Latitude', 'Longitude']:
         df = dm.rmv_dupl(df, v)
     # Again filter short trips since after possible removing duplicates
-    df = filter_short(df, groupby='TripLogId', minlength=min_trip_length)
+    df = filter_short(df, groupby='TripLogId', minlength=min_nr_points_trip)
     df['theta2'] = np.radians(np.where(df['Course'] > 180, df['Course'] - 180, df['Course']))
 
 
     trips = interpolate_trips(df, proj_info,
-                              interp_spline_deg,
-                              interp_resolution_m,
+                              interpolation_spline_degrees,
+                              interpolation_resolution_metres,
                               add_vars=add_vars_trips)
 
-    trips = filter_short(trips, groupby="TripLogId", minlength=min_trip_length)
+    trips = filter_short(trips, groupby="TripLogId", minlength=min_nr_points_trip)
 
     return df, trips
+
+def metres_to_coord(metres, origin, delta):
+    return metres * delta + origin
 
 def trips_processing(data, endpoint_threshold, remove_endpoints):
     """
@@ -509,12 +537,12 @@ def calculate_neighbour_similarity(df_in: pd.DataFrame, res_step,neighbour_dist,
     df["x_"+str(res_step)] = change_resolution(df["x"], step=res_step)
     df["y_"+str(res_step)] = change_resolution(df["y"], step=res_step)
     gr = df.groupby(["x_"+str(res_step), "y_"+str(res_step)])
-    low_res_median = gr[['x', 'y', 'Latitude', 'Longitude','theta2', "Altitude"]].median().reset_index()
-    low_res_median['similarity_median'] = neighbour_similarity(low_res_median, dist=neighbour_dist)
+    histogram_median_directions = gr[['x', 'y', 'Latitude', 'Longitude','theta2', "Altitude"]].median().reset_index()
+    histogram_median_directions['similarity_median'] = neighbour_similarity(histogram_median_directions, dist=neighbour_dist)
 
     # Take out the cells where the median direction is different from the neigbouring cells.
-    intersection_candidates = low_res_median[low_res_median['similarity_median'] > similarity_thr]
-    return intersection_candidates, low_res_median
+    intersection_candidates = histogram_median_directions[histogram_median_directions['similarity_median'] > similarity_thr]
+    return intersection_candidates, histogram_median_directions
 
 
 def change_resolution(values, step):
@@ -561,31 +589,64 @@ def dist_eucl(x1, x2, y1, y2):
     return np.sqrt((x1-x2)**2 + (y1-y2)**2)
 
 
-def get_cluster_centres(df_ini, merge_clust_in_dist):
-    ''' Merge points that are closer togheter than "merge_clust_in_dist" into one cluster using the mean value as the center'''
+def merge_nearby_cluster_centres(df_ini, distance, coordinates=["x", "y"], min_size=1):
+    ''' Merge points that are closer together than "distance" into one cluster using the mean value as the center'''
     df = df_ini.copy()
-    df['labels'] = cluster_simple_distance(df, ["x", "y"], merge_clust_in_dist)
-    df_grouped = df.groupby(['labels'])
-    cluster_centres = df_grouped.mean()
-    cluster_centres['cl_size'] = df_grouped.size()
-    cluster_centres = cluster_centres.reset_index(drop=True)
+    df['labels'] = cluster_simple_distance(df, coordinates, distance)
+    cluster_centres = df.groupby(['labels']).mean()
+    cluster_centres['cl_size'] = df.groupby(['labels']).size()
+    cluster_centres.reset_index(drop=True, inplace=True)
+
+    # Subset if the cluster is too small
+    cluster_centres = cluster_centres[cluster_centres['cl_size'] > min_size].reset_index(drop=True)
+
     return cluster_centres
+
+def get_cluster_to_merge(points, name, radius):
+    """
+
+    :param points: frame giving the intersection points that can be merged. name: the intersection type("load/dump/road").
+    :param name:
+    :param radius: the maximum distance for merging two intersection points
+    :return: dataframe containing the new merge clusters and a set giving the index of the clusters that has been removed
+    """
+    def distance(p1, p2): 
+        dx = p1["x"] - p2[0]
+        dy = p1["y"] - p2[1]
+        return np.sqrt(dx*dx + dy*dy)
+
+    new_clusters = pd.DataFrame()
+    removed_rows = []
+    for i,k in points.iterrows(): #i index, k row
+        p = k[["x", "y"]].to_list() #get position of point in row i (latlon)
+        points["dist" + str(i)] = points[["x", "y"]].apply(lambda x: distance(x, p), axis=1) #define new column in df consisting of distances from point p (position in row i)
+        m = points[points["dist" + str(i)] < radius].index.to_list() # Number of indices whose distance to p is smaller than radius
+        if len(m) > 1: # if there is at least one such index
+            index = points.index.max() + i # Get index of point, for
+            new_clusters = pd.concat([new_clusters,pd.DataFrame({"Latitude": points.iloc[m]["Latitude"].mean(),
+                                                             "Longitude": points.iloc[m]["Longitude"].mean(),
+                                                             "in_type": name}, index=[index])],ignore_index=True) #Append the set m, for some reason
+            removed_rows.append(m)#m added to removed rows
+
+        continue
+
+    return new_clusters.drop_duplicates(), set(dm.flatten_list(removed_rows))
 
 
 def cluster_simple_distance(df: pd.DataFrame, columns, max_distance):
     """
-    Clusters together all points that are within a specified distance to each other.
+    Cluster points that are within a specified distance to each other.
     """
-    tree = df_to_kdtree(df, columns)
-    pairs = dict(tree.sparse_distance_matrix(tree, max_distance)).keys()
-    G = nx.from_edgelist(pairs)
-    clusters = list(nx.connected_components(G))
-    series = pd.Series(index=range(len(df)), dtype='int')
-    for cl_nr, idx in enumerate(clusters, 1):
-        series[list(idx)] = cl_nr
-    series[series == 0] = np.array(range(sum(series == 0)))+series.max()+1
+    kd_tree = df_to_kdtree(df, columns)
+    point_pairs = dict(kd_tree.sparse_distance_matrix(kd_tree, max_distance)).keys()
+    graph = nx.from_edgelist(point_pairs)
+    clusters = list(nx.connected_components(graph))
+    cluster_labels = pd.Series(index=range(len(df)), dtype='int')
+    for cluster_nr, idx in enumerate(clusters, 1):
+        cluster_labels[list(idx)] = cluster_nr
+    cluster_labels[cluster_labels==0] = np.array(range(sum(cluster_labels==0))) + cluster_labels.max() + 1
 
-    return np.array(series)
+    return np.array(cluster_labels)
 
 
 def get_center_connected_trips(mx_df, R):
@@ -682,17 +743,15 @@ def mx_extremity_clusters(mx_df_ini, intersection_candidates, R, L, extremity_me
 
 
 
-def update_frames(cluster_info_ini, mx_df_extremities_ini):
+def filter_out_non_intersections(cluster_info_ini, mx_df_extremities_ini):
     """
-    Helper function updating nr_roads in cluster_info, and returning only information about candidate intersections with nr_roads>=3
+    Update nr_roads in cluster_info and return only candidate intersections with nr_roads>=3
     """
     cluster_info = cluster_info_ini.copy()
     mx_df_extremities = mx_df_extremities_ini.copy()
-    cluster_info['nr_roads'] = mx_df_extremities.groupby('cl_idx')[
-        'subcluster'].nunique()
+    cluster_info['nr_roads'] = mx_df_extremities.groupby('cl_idx')['subcluster'].nunique()
     cluster_info = cluster_info[cluster_info['nr_roads'] >= 3]
-    mx_df_extremities = mx_df_extremities[mx_df_extremities['cl_idx'].isin(
-        cluster_info.index)]
+    mx_df_extremities = mx_df_extremities[mx_df_extremities['cl_idx'].isin(cluster_info.index)]
 
     return cluster_info, mx_df_extremities
 

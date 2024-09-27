@@ -3,6 +3,10 @@ logger = logging.getLogger('producegraph')
 
 import configparser
 
+def parse_list(config_subsection, datatype, sep=','):
+	return [datatype(item.strip()) for item in config_subsection.split(sep)]
+
+
 def default_settings():
 	""" Sets up a default configuration."""
 	config = configparser.ConfigParser()

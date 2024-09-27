@@ -16,7 +16,7 @@ def distance(lat1, lon1, lat2, lon2):
         cos(lat2*p) * (1-cos((lon2-lon1)*p)) / 2
     return 12742 * asin(sqrt(hav))
 
-def cluster_and_categorize_points(mx_df, intersection_candidates, epsilon, min_samples, R, L, proximity_threshold, x_var="ping_x", y_var="ping_y"):
+def intersection_validation_cluster_points(mx_df, intersection_candidates, epsilon, min_samples, R, L, proximity_threshold, x_var="ping_x", y_var="ping_y"):
     """
     Cluster GPS points around intersection candidates and categorize them into different groups.
 
@@ -89,12 +89,12 @@ def add_altitude_load_dump(raw_data_init):
 
     def add_altitude(x):
         x.set_index("Timestamp", inplace=True)
-        dump_time = x.iloc[0]["DumpDateTime"]
+        dropoff_time = x.iloc[0]["DumpDateTime"]
         load_time = x.iloc[0]["LoadDateTime"]
         x = x[~x.index.duplicated(keep='first')]
-        dump_id = x.index.get_indexer([dump_time], method='nearest')
+        dropoff_id = x.index.get_indexer([dropoff_time], method='nearest')
         load_id = x.index.get_indexer([load_time], method='nearest')
-        dump_altitude = x.iloc[dump_id[0]]["Altitude"]
+        dump_altitude = x.iloc[dropoff_id[0]]["Altitude"]
         load_altitude = x.iloc[load_id[0]]["Altitude"]
         x["LoadAltitude"] = load_altitude
         x["DumpAltitude"] = dump_altitude

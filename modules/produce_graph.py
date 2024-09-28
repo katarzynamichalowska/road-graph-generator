@@ -174,8 +174,6 @@ def get_load_points(data, proj_info, radius):
     new_loads, close_points = rdm.get_cluster_to_merge(
         loads.copy(), "loads", radius=radius)
 
-    new_loads["Name"] = new_loads.index
-    new_loads["Name"] = new_loads["Name"].apply(lambda x: str(x))
     new_loads["in_type"] = "load"
     logger.debug(f"Computed load points.")
     # Adding the altitude to the load points
@@ -227,7 +225,6 @@ def get_dropoff_points_db(data, proj_info, radius, eps=0.0001):
         dropoff.loc[len(dropoff.index)] = [latitude, longitude]
 
     dropoff["in_type"] = "dropoff"
-    dropoff["Name"] = "Dropoff"
     dropoff = rdm.add_meter_columns(dropoff, proj_info)[0]
     new_dropoff = dropoff
     new_dropoff = rdm.add_meter_columns(new_dropoff, proj_info)[0]

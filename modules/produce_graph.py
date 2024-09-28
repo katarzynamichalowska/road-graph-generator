@@ -226,8 +226,8 @@ def get_dropoff_points_db(data, proj_info, radius, eps=0.0001):
         longitude = k["DumpLongitude"].mean()
         dropoff.loc[len(dropoff.index)] = [latitude, longitude]
 
-    dropoff["in_type"] = "dump"
-    dropoff["Name"] = "Dump"
+    dropoff["in_type"] = "dropoff"
+    dropoff["Name"] = "Dropoff"
     dropoff = rdm.add_meter_columns(dropoff, proj_info)[0]
     new_dropoff = dropoff
     new_dropoff = rdm.add_meter_columns(new_dropoff, proj_info)[0]

@@ -7,7 +7,9 @@ import modules.edge_inference as edgei
 import pandas as pd
 import os
 
-config = config.read_settings('config.ini')
+
+script_dir = os.path.dirname(os.path.realpath(__file__))
+config = config.read_settings(os.path.join(script_dir, 'config.ini'))
 folder = config["io"]["data_dir"]
 
 output_dir = config["io"]["output_dir"]
@@ -67,54 +69,6 @@ mx_df = rdm.preprocess_mx_dist(mx_dist, trips, intersection_candidates)
 
 print("\nSTEP 3: Validating candidate intersections")
 
-points_df, valid_points_df, extremity_clusters_df = produce_graph.intersection_validation_cluster_points(mx_df, intersection_candidates, 
-                                            epsilon=config["intersection_validation"].getfloat("dbscan_epsilon"), 
-                                            min_samples=config["intersection_validation"].getint("dbscan_min_samples"), 
-                                            R=R, L=L, proximity_threshold=config["intersection_validation"].getfloat("max_dist_from_intersection"), 
-                                            x_var="ping_x", y_var="ping_y")
-
-points_df, valid_points_df, extremity_clusters_df2 = produce_graph.intersection_validation_cluster_points(mx_df, intersection_candidates, 
-                                            epsilon=config["intersection_validation"].getfloat("dbscan_epsilon"), 
-                                            min_samples=config["intersection_validation"].getint("dbscan_min_samples"), 
-                                            R=R2, L=L, proximity_threshold=config["intersection_validation"].getfloat("max_dist_from_intersection"), 
-                                            x_var="ping_x", y_var="ping_y")
-
-if config["plotting"].getboolean('generate_plots'):
-    x_lim = parse_list(config["plotting"].get("x_lim_plot3"), int)
-    y_lim = parse_list(config["plotting"].get("y_lim_plot3"), int)
-    pl.plot_validating_intersections_schema(trips, valid_points_df=valid_points_df, intersection_candidates=intersection_candidates, 
-                                extremity_clusters_df=extremity_clusters_df, R=R, L=L, 
-                                max_dist_from_intersection=config["intersection_validation"].getfloat("max_dist_from_intersection"), 
-                                tick_resolution=50, marker_size=3, y_lim=y_lim, x_lim=x_lim,
-                                savename=os.path.join(output_dir, "intersection_validation_schema.pdf"))
-
-    y_lim, x_lim = (14300, 15450), (11300, 12850)
-    confirmed_intersections = intersection_candidates.loc[((intersection_candidates["x"] > 11650) & (intersection_candidates["x"] < 11800)) | (
-        (intersection_candidates["y"] > 14650) & (intersection_candidates["y"] < 14800))]
-    pl.plot_intersections_with_radii(trips=trips,
-                                    extremity_clusters=extremity_clusters_df, intersection_candidates=intersection_candidates,
-                                    confirmed_intersections=confirmed_intersections,
-                                    radii_list=[R + L],
-                                    y_lim=y_lim, x_lim=x_lim, marker_size=1, title=f"Validation with $R={R}, L={L}$", 
-                                    savename=os.path.join(output_dir, f"intersection_validation_R_{R}_L_{L}.pdf"))
-
-    confirmed_intersections = intersection_candidates.loc[((intersection_candidates["x"] > 11500) & (intersection_candidates["x"] < 11800) & (
-        intersection_candidates["y"] < 15100)) | ((intersection_candidates["y"] > 14650) & (intersection_candidates["y"] < 14800))]
-    pl.plot_intersections_with_radii(trips=trips,
-                                    extremity_clusters=extremity_clusters_df2, intersection_candidates=intersection_candidates,
-                                    confirmed_intersections=confirmed_intersections,
-                                    radii_list=[R2, R2 + L],
-                                    y_lim=y_lim, x_lim=x_lim, marker_size=1, title=f"Validation with $R={R2}, L={L}$", 
-                                    savename=os.path.join(output_dir, f"intersection_validation_R_{R}_L_{L}.pdf"))
-
-    df_bounded_region = histogram_median_directions[(histogram_median_directions['x_5'] >= x_lim[0]) & (histogram_median_directions['x_5'] + 5 <= x_lim[1]) & (histogram_median_directions['y_5'] >= y_lim[0]) & (histogram_median_directions['y_5'] + 5 <= y_lim[1])]
-    confirmed_intersections = intersection_candidates.loc[intersection_candidates["x"] > 10200]
-
-    pl.plot_intersections(df_bounded_region=df_bounded_region, trips=trips, extremity_clusters_df=extremity_clusters_df, extremity_clusters_df2=extremity_clusters_df2,
-                        confirmed_intersections1=confirmed_intersections, confirmed_intersections2=confirmed_intersections, 
-                        intersection_candidates=intersection_candidates, x_lim=x_lim, y_lim=y_lim, R=R, R2=R2, L=L, 
-                        savename=os.path.join(output_dir, "intersection_candidates_example.pdf"))
-
 # Verifying candidates is here:
 mx_df_extremities = rdm.mx_extremity_clusters(mx_df_ini=mx_df, intersection_candidates=intersection_candidates,
                                               R=R, L=L,
@@ -126,16 +80,6 @@ mx_df_extremities = rdm.mx_extremity_clusters(mx_df_ini=mx_df, intersection_cand
 
 confirmed_intersections, mx_df_extremities = rdm.filter_out_non_intersections(intersection_candidates, mx_df_extremities)
 
-#TODO:  This is a temporary plot to see discrepancies
-y_lim, x_lim = (14300, 15450), (11300, 12850)
-pl.plot_intersections_with_radii(trips=trips,
-                                extremity_clusters=extremity_clusters_df, intersection_candidates=intersection_candidates,
-                                confirmed_intersections=confirmed_intersections,
-                                radii_list=[R + L],
-                                y_lim=y_lim, x_lim=x_lim, marker_size=1, title=f"Validation with $R={R}, L={L}$", 
-                                savename=os.path.join(output_dir, f"intersection_validation_R_{R}_L_{L}_2.pdf"))
-
-
 nodes_info = confirmed_intersections[["x", "y", "Longitude", "Latitude", "Altitude"]].reset_index().rename(columns={"index": "id"})
 nodes_info.rename(columns={"Altitude": "z"}, inplace=True)
 
@@ -144,7 +88,7 @@ nodes_info = nodes_info[["Latitude", "Longitude","z", "in_type"]].reset_index(dr
 print("\nSTEP 4: Identifying load and drop-off locations")
 
 load = produce_graph.get_load_points(raw_data, proj_info, radius=config["load_dropoff"].getint('dist_merge_metres'),)
-dropoff = produce_graph.get_dropoff_points_db(raw_data, proj_info, radius=config["load_dropoff"].getint('dist_merge_metres'), eps=0.001)
+dropoff = produce_graph.get_dropoff_points_dbscan(raw_data, proj_info, radius=config["load_dropoff"].getint('dist_merge_metres'), eps=0.001)
 
 nodes_info = pd.concat([nodes_info, dropoff], ignore_index=True)
 nodes_info = pd.concat([nodes_info, load], ignore_index=True)

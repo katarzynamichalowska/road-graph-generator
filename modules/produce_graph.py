@@ -184,7 +184,7 @@ def get_load_points(data, proj_info, radius):
     return new_loads
 
 
-def get_dropoff_points_db(data, proj_info, radius, eps=0.0001):
+def get_dropoff_points_dbscan(data, proj_info, radius, eps=0.0001):
     """
     Obtain the dump points for a set of tracks. The points are clustered and cluster centers are merged if closer to
     each other than a given radius.
@@ -212,8 +212,7 @@ def get_dropoff_points_db(data, proj_info, radius, eps=0.0001):
         return data[data.index(m)]["Altitude"]
 
     # Here we make a list of all the locations of the drop-off points. There is one drop-off point per trip
-    trips = data.groupby("TripLogId")[
-        ["DumpLatitude", "DumpLongitude"]].first()
+    trips = data.groupby("TripLogId")[["DumpLatitude", "DumpLongitude"]].first()
     X = trips.to_numpy()
     db = DBSCAN(eps=eps).fit(X)
     trips["labels"] = db.labels_

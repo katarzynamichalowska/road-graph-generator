@@ -176,7 +176,7 @@ node_segment_summary = edgei.remove_duplicate_segment_ids(node_segment_summary)
 
 segments_cluster_df = edgei.cluster_segments_connected_by_nodes(segments_df, node_segment_summary, 
                                                                 epsilon=config["road_inference"].getfloat('dbscan_epsilon'), 
-                                                                min_samples=config["road_inference"].getfloat('min_samples'))
+                                                                min_samples=config["road_inference"].getint('dbscan_min_samples'))
 edges_list = edgei.generate_edges(segments_cluster_df, segments_df, min_segment_length=1)
 
 print("\nSTEP 6: Plotting the graph")

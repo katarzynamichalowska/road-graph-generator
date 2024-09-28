@@ -136,26 +136,25 @@ pl.plot_intersections_with_radii(trips=trips,
                                 savename=os.path.join(output_dir, f"intersection_validation_R_{R}_L_{L}_2.pdf"))
 
 
-cluster_info = confirmed_intersections[["x", "y", "Longitude", "Latitude", "Altitude"]].reset_index().rename(columns={"index": "id"})
-cluster_info.rename(columns={"Altitude": "z"}, inplace=True)
+nodes_info = confirmed_intersections[["x", "y", "Longitude", "Latitude", "Altitude"]].reset_index().rename(columns={"index": "id"})
+nodes_info.rename(columns={"Altitude": "z"}, inplace=True)
 
-cluster_info["in_type"] = "road"
-cluster_info["Name"] = "Road"
-cluster_info = cluster_info[["Latitude", "Longitude","z", "in_type", "Name"]].reset_index(drop=True)
+nodes_info["in_type"] = "road"
+nodes_info = nodes_info[["Latitude", "Longitude","z", "in_type"]].reset_index(drop=True)
 print("\nSTEP 4: Identifying load and drop-off locations")
 
 load = produce_graph.get_load_points(raw_data, proj_info, radius=config["load_dropoff"].getint('dist_merge_metres'),)
 dropoff = produce_graph.get_dropoff_points_db(raw_data, proj_info, radius=config["load_dropoff"].getint('dist_merge_metres'), eps=0.001)
 
-cluster_info = pd.concat([cluster_info, dropoff], ignore_index=True)
-cluster_info = pd.concat([cluster_info, load], ignore_index=True)
-cluster_info = cluster_info[["Latitude", "Longitude", "z", "in_type", "Name"]].reset_index(drop=True)
+nodes_info = pd.concat([nodes_info, dropoff], ignore_index=True)
+nodes_info = pd.concat([nodes_info, load], ignore_index=True)
+nodes_info = nodes_info[["Latitude", "Longitude", "z", "in_type"]].reset_index(drop=True)
 
 # Only copying lat, lon, and then adding meter information making sure to use the right proj_info
-cluster_info, _ = rdm.add_meter_columns(cluster_info, proj_info=proj_info)
-cluster_info["id"] = cluster_info.index
+nodes_info, _ = rdm.add_meter_columns(nodes_info, proj_info=proj_info)
+nodes_info["id"] = nodes_info.index
 
-cluster_info.to_csv(os.path.join(output_dir, f'cluster_info.csv'))
+nodes_info.to_csv(os.path.join(output_dir, f'cluster_info.csv'))
 mx_df_extremities.to_csv(os.path.join(output_dir, f'mx_df_extremities.csv'))
 
 
@@ -163,10 +162,10 @@ print("\nSTEP 5: Road inference")
 
 # Increased distance because sometimes a trip is very far and we dont want to duplicate edges
 trips.reset_index(drop=True, inplace=True)
-mx_dist = rdm.compute_dist_matrix(cluster_info, trips, config["road_inference"].getfloat('dist_node'))
-mx_df = rdm.preprocess_mx_dist(mx_dist, trips, cluster_info)
+mx_dist = rdm.compute_dist_matrix(nodes_info, trips, config["road_inference"].getfloat('dist_node'))
+mx_df = rdm.preprocess_mx_dist(mx_dist, trips, nodes_info)
 
-cluster_info = rdm.assign_triplog_to_clusters(cluster_info, mx_df, config["road_inference"].getfloat('dist_node'))
+nodes_info = rdm.assign_triplog_to_clusters(nodes_info, mx_df, config["road_inference"].getfloat('dist_node'))
 adjacent_nodes_info, trips_with_node_info = rdm.identify_adjacent_node_trips(trips_ini=trips, mx_dist_ini=mx_df)
 trips_with_node_info = edgei.mark_trips_closest_to_intersection(trips_with_node_info=trips_with_node_info)
 segments_df = edgei.divide_trips_at_intersections(trips_with_node_info)
@@ -181,4 +180,4 @@ edges_list = edgei.generate_edges(segments_cluster_df, segments_df, min_segment_
 
 print("\nSTEP 6: Plotting the graph")
 
-pl.plot_graph(edges_list, proj_info, cluster_info, trip=pd.DataFrame(), mx_df=pd.DataFrame(), dump=False, point=None, savename=os.path.join(output_dir, "graph"))
+pl.plot_graph(edges_list, proj_info, nodes_info, trip=pd.DataFrame(), mx_df=pd.DataFrame(), dump=False, point=None, savename=os.path.join(output_dir, "graph"))

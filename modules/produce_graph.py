@@ -10,11 +10,13 @@ warnings.filterwarnings('ignore')
 logger = logging.getLogger('producegraph')
 
 
-def distance(lat1, lon1, lat2, lon2):
+def distance_haversine(lat1, lon1, lat2, lon2):
     p = 0.017453292519943295
     hav = 0.5 - cos((lat2-lat1)*p)/2 + cos(lat1*p) * \
         cos(lat2*p) * (1-cos((lon2-lon1)*p)) / 2
     return 12742 * asin(sqrt(hav))
+
+
 
 def intersection_validation_cluster_points(mx_df, intersection_candidates, epsilon, min_samples, R, L, proximity_threshold, x_var="ping_x", y_var="ping_y"):
     """
@@ -77,13 +79,12 @@ def intersection_validation_cluster_points(mx_df, intersection_candidates, epsil
 
 
 def closest(data, v):
-    m = min(data, key=lambda p: distance(
-        v['Latitude'], v['Longitude'], p['Latitude'], p['Longitude']))
+    m = min(data, key=lambda p: distance_haversine(v['Latitude'], v['Longitude'], p['Latitude'], p['Longitude']))
     return data[data.index(m)]["Altitude"]
 
 
 def add_altitude_load_dump(raw_data_init):
-    """Adding altitude and longitude for the load and dump positions by finding the altitude of the closest timestamp in the tracking data"""
+    """Adding altitude and longitude for the load and drop-off positions by finding the altitude of the closest timestamp in the tracking data"""
 
     df = raw_data_init.copy()
 
@@ -100,8 +101,8 @@ def add_altitude_load_dump(raw_data_init):
         x["DumpAltitude"] = dump_altitude
         x.reset_index(inplace=True)
         return x
-    df = df.groupby("TripLogId").apply(
-        lambda x: add_altitude(x)).reset_index(drop=True)
+    
+    df = df.groupby("TripLogId").apply(lambda x: add_altitude(x)).reset_index(drop=True)
     return df
 
 
@@ -143,8 +144,8 @@ def get_load_points(data, proj_info, radius):
     # The below loop might look nicer in numpy-ish, but it's probably less important
     for i, frame in data.groupby(["LoaderMachineName", "TaskId"], dropna=False):
         # Lists of all the unique positions for each dumper.
-        x, y, z = list(set(frame["load_x"])), list(
-            set(frame["load_y"])), list(set(frame["Altitude"]))
+        x, y, z = list(set(frame["load_x"])), list(set(frame["load_y"])), list(set(frame["Altitude"]))
+
         if len(x) < 3:
             logger.debug(
                 f'Skipping loader machine {i} - less than 10 positions available')
@@ -176,15 +177,14 @@ def get_load_points(data, proj_info, radius):
 
     new_loads["in_type"] = "load"
     logger.debug(f"Computed load points.")
-    # Adding the altitude to the load points
     data_list = data[["Longitude", "Latitude", "Altitude"]].to_dict('records')
     new_loads = rdm.add_meter_columns(new_loads, proj_info)[0]
-    new_loads["z"] = new_loads.apply(lambda x: closest(data_list, x), axis=1)
+    new_loads["Altitude"] = new_loads.apply(lambda x: closest(data_list, x), axis=1)
 
     return new_loads
 
 
-def get_dropoff_points_dbscan(data, proj_info, radius, eps=0.0001):
+def get_dropoff_points_dbscan(data, proj_info, eps=0.001):
     """
     Obtain the dump points for a set of tracks. The points are clustered and cluster centers are merged if closer to
     each other than a given radius.
@@ -198,17 +198,10 @@ def get_dropoff_points_dbscan(data, proj_info, radius, eps=0.0001):
     :return dump: data frame containing the dump positions
     """
 
-    # Functions to find the altitude of the closest point of the found dump points. Based on this: https://stackoverflow.com/questions/41336756/find-the-closest-latitude-and-longitude
-    # The Haversine formula is used for finding the distance between points
-    def distance(lat1, lon1, lat2, lon2):
-        p = 0.017453292519943295
-        hav = 0.5 - cos((lat2-lat1)*p)/2 + cos(lat1*p) * \
-            cos(lat2*p) * (1-cos((lon2-lon1)*p)) / 2
-        return 12742 * asin(sqrt(hav))
+    # Functions to find the altitude of the closest point of the found drop-off points. Based on this: https://stackoverflow.com/questions/41336756/find-the-closest-latitude-and-longitude
 
     def closest(data, v):
-        m = min(data, key=lambda p: distance(
-            v['Latitude'], v['Longitude'], p['Latitude'], p['Longitude']))
+        m = min(data, key=lambda p: distance_haversine(v['Latitude'], v['Longitude'], p['Latitude'], p['Longitude']))
         return data[data.index(m)]["Altitude"]
 
     # Here we make a list of all the locations of the drop-off points. There is one drop-off point per trip
@@ -229,5 +222,7 @@ def get_dropoff_points_dbscan(data, proj_info, radius, eps=0.0001):
     new_dropoff = rdm.add_meter_columns(new_dropoff, proj_info)[0]
     data_list = data[["Longitude", "Latitude", "Altitude"]].to_dict('records')
 
-    new_dropoff["z"] = new_dropoff.apply(lambda x: closest(data_list, x), axis=1)
+    #new_dropoff["z"] = new_dropoff.apply(lambda x: closest(data_list, x), axis=1)
+    new_dropoff["Altitude"] = new_dropoff.apply(lambda x: closest(data_list, x), axis=1)
     return new_dropoff
+

@@ -739,7 +739,7 @@ def cluster_extremities(distance_df, intersection_candidates, R, L, extremity_me
 
 
 
-def filter_out_non_intersections(nodes_info, mx_df_extremities_ini):
+def keep_candidates_minimum_three_roads(nodes_info, mx_df_extremities_ini):
     """
     Update nr_roads in cluster_info and return only candidate intersections with nr_roads>=3
     """

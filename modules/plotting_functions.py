@@ -14,7 +14,7 @@ from matplotlib.text import Text
 from matplotlib.lines import Line2D
 from IPython.display import display
 
-def plot_graph(edges_list, proj_info, nodes_info, trip=pd.DataFrame(), mx_df=pd.DataFrame(), dump=False, point=None, savename="graph"):
+def plot_graph(edges_list, proj_info, nodes_info, trip=pd.DataFrame(), distance_df=pd.DataFrame(), dump=False, point=None, savename="graph"):
 
     mapit = folium.Map(location=[proj_info["origin"][0], proj_info["origin"][1]],
                        zoom_start=3, control_scale=False, tiles="cartodb positron")
@@ -33,8 +33,8 @@ def plot_graph(edges_list, proj_info, nodes_info, trip=pd.DataFrame(), mx_df=pd.
 
     color_mapping = {
         "load": "green",
-        "dump": "black",
-        "road": "red"
+        "dropoff": "black",
+        "intersection": "red"
     }
 
     for node_type, color in color_mapping.items():
@@ -43,8 +43,8 @@ def plot_graph(edges_list, proj_info, nodes_info, trip=pd.DataFrame(), mx_df=pd.
             folium.CircleMarker(location=p, color=color, fill_color=color, radius=5).add_to(mapit)
 
 
-    if mx_df.shape[0] > 0:
-        for i, k in mx_df.iterrows():
+    if distance_df.shape[0] > 0:
+        for i, k in distance_df.iterrows():
             p = [k["ping_lat"], k["ping_lon"]]
             folium.CircleMarker(location=p, fill=True, fill_color='yellow',
                                 color='yellow', radius=3, fill_opacity=1, weight=2).add_to(mapit)

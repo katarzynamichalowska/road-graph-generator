@@ -38,7 +38,7 @@ df, trips = rdm.preprocess_data(raw_data, proj_info,
                                 config["preprocessing"].getfloat('divide_trip_threshold_metres'),
                                 add_vars_trips=['Speed', 'Distance', 'timestamp_s', "x", "y", "Altitude"])
 
-R, R2 = parse_list(config["intersection_validation"].get("R"), float, sep=',')
+R1, R2 = parse_list(config["intersection_validation"].get("R"), float, sep=',')
 L = config["intersection_validation"].getfloat("L")
 
 print("\nSTEP 1 & 2: Generating 2D histograms of heading directions and identifying candidate intersections")
@@ -53,14 +53,14 @@ intersection_candidates = rdm.merge_nearby_cluster_centres(intersection_candidat
 
 
 # Returns a frame containg all points that are within the max_distance from canditate clusters
-distance_matrix = rdm.compute_dist_matrix(intersection_candidates, trips[["x", "y"]], L+max(R,R2))
+distance_matrix = rdm.compute_dist_matrix(intersection_candidates, trips[["x", "y"]], L+max(R1,R2))
 distance_df = rdm.preprocess_distance_matrix(distance_matrix, trips, intersection_candidates)
 
 print("\nSTEP 3: Validating candidate intersections")
 
-# Verifying candidates is here:
+# Validating intersections with R1
 extremity_clusters = rdm.cluster_extremities(distance_df=distance_df, intersection_candidates=intersection_candidates,
-                                              R=R, L=L,
+                                              R=R1, L=L,
                                               extremity_merging_cluster_dist=config["intersection_validation"].getfloat("dist_extremity_cluster_metres"),
                                               min_cl_size=config["intersection_validation"].getint("max_extremity_cluster_size"),
                                               max_dist_from_intersection=config["intersection_validation"].getfloat("max_dist_from_intersection"),
@@ -68,7 +68,24 @@ extremity_clusters = rdm.cluster_extremities(distance_df=distance_df, intersecti
                                               min_samples=config["intersection_validation"].getint("dbscan_min_samples"),
                                               max_nr_points=config["intersection_validation"].getint("max_nr_points"))
 
-confirmed_intersections, extremity_clusters = rdm.filter_out_non_intersections(intersection_candidates, extremity_clusters)
+confirmed_intersections1, extremity_clusters = rdm.keep_candidates_minimum_three_roads(intersection_candidates, extremity_clusters)
+
+# Validating intersections with R2
+extremity_clusters2 = rdm.cluster_extremities(distance_df=distance_df, intersection_candidates=intersection_candidates,
+                                              R=R2, L=L,
+                                              extremity_merging_cluster_dist=config["intersection_validation"].getfloat("dist_extremity_cluster_metres"),
+                                              min_cl_size=config["intersection_validation"].getint("max_extremity_cluster_size"),
+                                              max_dist_from_intersection=config["intersection_validation"].getfloat("max_dist_from_intersection"),
+                                              epsilon=config["intersection_validation"].getfloat("dbscan_epsilon_metres"),
+                                              min_samples=config["intersection_validation"].getint("dbscan_min_samples"),
+                                              max_nr_points=config["intersection_validation"].getint("max_nr_points"))
+
+confirmed_intersections2, extremity_clusters2 = rdm.keep_candidates_minimum_three_roads(intersection_candidates, extremity_clusters2)
+
+confirmed_intersections = pd.concat([confirmed_intersections1, confirmed_intersections2])
+filtered_df = confirmed_intersections.drop_duplicates(subset=['Latitude', 'Longitude'])
+
+print(confirmed_intersections.head())
 confirmed_intersections = confirmed_intersections[["x", "y", "Longitude", "Latitude", "Altitude", "in_type"]]
 
 
@@ -78,7 +95,6 @@ load = produce_graph.get_load_points(raw_data, proj_info, radius=config["load_dr
 dropoff = produce_graph.get_dropoff_points_dbscan(raw_data, proj_info, eps=0.001)
 nodes_info = pd.concat([confirmed_intersections, dropoff, load]).reset_index(drop=True)
 nodes_info["id"] = nodes_info.index
-print("NODES INFO: ", nodes_info)
 
 nodes_info.to_csv(os.path.join(output_dir, f'cluster_info.csv'))
 extremity_clusters.to_csv(os.path.join(output_dir, f'mx_df_extremities.csv'))

@@ -104,7 +104,7 @@ def divide_trips_at_intersections(trips_with_node_info):
     """
     segments = []
 
-    for trip_id, trip_data in tqdm(trips_with_node_info.groupby('TripLogId'), desc="Dividing trips into segments:"):
+    for trip_id, trip_data in tqdm(trips_with_node_info.groupby('TripLogId'), desc="Dividing trips into segments"):
         start_idx = 0
         counter = 0
 

@@ -145,7 +145,7 @@ def coord_to_metres(coord, origin, delta):
     """
     if isinstance(np.array(coord), np.ndarray) == False:
         coord = coord.to_numpy()
-    return ((coord - origin) / delta).astype(int)  # TODO why is this an int???
+    return (coord - origin) / delta
 
 
 def divide_trips(df, thr_minutes, thr_degrees, thr_metres=None, trip_id='TripLogId'):
@@ -238,7 +238,7 @@ def interpolate_trips(df, proj_info, spline_deg: int, resolution_m: float, add_v
     return latlon_interp
 
 
-def compute_dist_matrix(df1_ini, df2_ini, max_distance):
+def compute_dist_matrix(df1_ini, df2_ini, max_dist_trip_from_node):
     """
     Computes a matrix of distances from points in df1 to points in df2.
     Returns only those that are at least within max_distance.
@@ -248,9 +248,8 @@ def compute_dist_matrix(df1_ini, df2_ini, max_distance):
     df2 = df2_ini.copy()
     tree1 = df_to_kdtree(df=df1, columns=["x", "y"])
     tree2 = df_to_kdtree(df=df2, columns=["x", "y"])
-    mx = dict(tree2.sparse_distance_matrix(
-        tree1, max_distance=max_distance, p=2))
-    return mx
+    distance_matrix = dict(tree2.sparse_distance_matrix(tree1, max_distance=max_dist_trip_from_node, p=2))
+    return distance_matrix
 
 
 def df_to_kdtree(df: pd.DataFrame, columns):
@@ -263,7 +262,7 @@ def df_to_kdtree(df: pd.DataFrame, columns):
     return tree
 
 
-def preprocess_mx_dist(mx_dist, trips, cluster_info):
+def preprocess_distance_matrix(mx_dist, trips, cluster_info):
     """
     :param mx_dist: matrix of distances as returned by compute_dist_matrix()
     :param trips: interpolated trips
@@ -661,7 +660,8 @@ def get_center_connected_trips(mx_df, R):
     return mx_df_connected
 
 
-def validate_points_in_annulus(all_points, node_center, R, L, proximity_threshold, x_var="x", y_var="y", epsilon=10, min_samples=5):
+def validate_points_in_annulus(all_points, node_center, R, L, max_dist_from_intersection, x_var="x", y_var="y", epsilon=10, min_samples=5,
+                               max_nr_points=1000):
     """
     Validate points based on specified criteria and subset those within the annulus of valid clusters.
 
@@ -678,33 +678,29 @@ def validate_points_in_annulus(all_points, node_center, R, L, proximity_threshol
 
     # Calculate distance to the node center
     node_center_x, node_center_y = node_center
-    all_points['dist_to_center'] = np.sqrt(
-        (all_points[x_var] - node_center_x)**2 + (all_points[y_var] - node_center_y)**2)
+    all_points['dist_to_center'] = np.sqrt((all_points[x_var] - node_center_x)**2 + (all_points[y_var] - node_center_y)**2)
 
     # Filter points within the R+L radius
     points_within_radius = all_points[all_points['dist_to_center'] <= R + L]
+    if max_nr_points is not None:
+        points_within_radius = points_within_radius.sample(n=min(max_nr_points, len(points_within_radius)), replace=False)
 
     # Apply DBSCAN clustering
     # Adjust eps and min_samples as needed
     dbscan = DBSCAN(eps=epsilon, min_samples=min_samples)
-    points_within_radius['cluster'] = dbscan.fit_predict(
-        points_within_radius[[x_var, y_var]])
+    points_within_radius['cluster'] = dbscan.fit_predict(points_within_radius[[x_var, y_var]])
 
     # Identify clusters with at least one point close to the node center
-    valid_clusters = points_within_radius[points_within_radius['dist_to_center']
-                                          < proximity_threshold]['cluster'].unique()
+    valid_clusters = points_within_radius[points_within_radius['dist_to_center'] < max_dist_from_intersection]['cluster'].unique()
 
     # Subset points in valid clusters and within the annulus
-    valid_points = points_within_radius[points_within_radius['cluster'].isin(
-        valid_clusters) & (points_within_radius['dist_to_center'] >= R)]
+    valid_points = points_within_radius[points_within_radius['cluster'].isin(valid_clusters) & (points_within_radius['dist_to_center'] >= R)]
 
     return valid_points
 
 
-from tqdm import tqdm  # Ensure you have tqdm installed: pip install tqdm
-
-def mx_extremity_clusters(mx_df_ini, intersection_candidates, R, L, extremity_merging_cluster_dist, min_cl_size, max_dist_from_intersection,
-                          epsilon=12, min_samples=5):
+def cluster_extremities(distance_df, intersection_candidates, R, L, extremity_merging_cluster_dist, min_cl_size, 
+                                max_dist_from_intersection, epsilon=12, min_samples=5, max_nr_points=1000):
     """
     TODO: UPDATE DESCRIPTION
     Finds the subclusters that are within the radius > R and < R + L. Returns a frame with one row per ping inside this area, indicating its subcluster. 
@@ -712,48 +708,48 @@ def mx_extremity_clusters(mx_df_ini, intersection_candidates, R, L, extremity_me
     @param min_cl_size: minimal size of extremity cluster to be counted
     @param max_dist_from_intersection: The radius around an intersection candidate that we require a track to pass by in order for its GPS points in the extremity to be considered.
     """
-    mx_df = mx_df_ini.copy()
-    list_mx_df_extremities = []
+    distance_df = distance_df.copy()
+    extremity_clusters_list = []
     
-    # Using tqdm for progress tracking
     for cl_idx in tqdm(range(len(intersection_candidates)), desc="Verifying candidates", unit="candidate"):
-        mx_df_subset = mx_df.loc[mx_df["cl_idx"] == cl_idx]
+        distance_df_subset = distance_df.loc[distance_df["cl_idx"] == cl_idx]
         cl = intersection_candidates.iloc[cl_idx]
-        mx_df_subset_val = validate_points_in_annulus(all_points=mx_df_subset, node_center=(cl["x"], cl["y"]),
-                                                      R=R, L=L,
-                                                      proximity_threshold=max_dist_from_intersection,
-                                                      x_var="ping_x", y_var="ping_y", epsilon=epsilon, min_samples=min_samples)
+        distance_df_subset_validated = validate_points_in_annulus(all_points=distance_df_subset, node_center=(cl["x"], cl["y"]),
+                                                                          R=R, L=L,
+                                                                          max_dist_from_intersection=max_dist_from_intersection,
+                                                                          x_var="ping_x", y_var="ping_y", epsilon=epsilon, 
+                                                                          min_samples=min_samples, max_nr_points=max_nr_points)
 
-        if not mx_df_subset_val.empty:
-            mx_df_subset_val["subcluster"] = cluster_simple_distance(mx_df_subset_val, ['ping_x', 'ping_y'],
+        if not distance_df_subset_validated.empty:
+            distance_df_subset_validated["subcluster"] = cluster_simple_distance(distance_df_subset_validated, ['ping_x', 'ping_y'],
                                                                      extremity_merging_cluster_dist)
 
-            list_mx_df_extremities.append(mx_df_subset_val)
+            extremity_clusters_list.append(distance_df_subset_validated)
 
-    mx_df_extremities = pd.concat(list_mx_df_extremities, axis=0)
+    extremity_clusters_df = pd.concat(extremity_clusters_list, axis=0)
 
-    mx_df_extremities['subcluster'] = [str(i) + '_' + str(j) for i, j in zip(mx_df_extremities['cl_idx'],
-                                                                             mx_df_extremities['subcluster'])]
-    subcluster_sizes = mx_df_extremities.groupby(['cl_idx', 'subcluster']).size()
+    extremity_clusters_df['subcluster'] = [str(i) + '_' + str(j) for i, j in zip(extremity_clusters_df['cl_idx'],
+                                                                             extremity_clusters_df['subcluster'])]
+    subcluster_sizes = extremity_clusters_df.groupby(['cl_idx', 'subcluster']).size()
     subcluster_sizes = subcluster_sizes[subcluster_sizes >= min_cl_size]
     subcluster_sizes = subcluster_sizes.reset_index(level=1)
-    mx_df_extremities = mx_df_extremities[mx_df_extremities['subcluster'].isin(subcluster_sizes['subcluster'])]
+    extremity_clusters_df = extremity_clusters_df[extremity_clusters_df['subcluster'].isin(subcluster_sizes['subcluster'])]
 
-    return mx_df_extremities
+    return extremity_clusters_df
 
 
 
-def filter_out_non_intersections(cluster_info_ini, mx_df_extremities_ini):
+def filter_out_non_intersections(nodes_info, mx_df_extremities_ini):
     """
     Update nr_roads in cluster_info and return only candidate intersections with nr_roads>=3
     """
-    cluster_info = cluster_info_ini.copy()
     mx_df_extremities = mx_df_extremities_ini.copy()
-    cluster_info['nr_roads'] = mx_df_extremities.groupby('cl_idx')['subcluster'].nunique()
-    cluster_info = cluster_info[cluster_info['nr_roads'] >= 3]
-    mx_df_extremities = mx_df_extremities[mx_df_extremities['cl_idx'].isin(cluster_info.index)]
+    nodes_info['nr_roads'] = mx_df_extremities.groupby('cl_idx')['subcluster'].nunique()
+    nodes_info = nodes_info[nodes_info['nr_roads'] >= 3]
+    mx_df_extremities = mx_df_extremities[mx_df_extremities['cl_idx'].isin(nodes_info.index)]
+    nodes_info["in_type"] = "intersection"
 
-    return cluster_info, mx_df_extremities
+    return nodes_info, mx_df_extremities
 
 
 def kdtree_neighbors(df1, df2, r=25, p=2, eps=0):

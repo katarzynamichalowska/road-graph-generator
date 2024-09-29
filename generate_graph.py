@@ -53,7 +53,7 @@ intersection_candidates = rdm.merge_nearby_cluster_centres(intersection_candidat
 
 
 # Returns a frame containg all points that are within the max_distance from canditate clusters
-distance_matrix = rdm.compute_dist_matrix(intersection_candidates, trips[["x", "y"]], L+max(R1,R2))
+distance_matrix = rdm.compute_distance_matrix(intersection_candidates, trips[["x", "y"]], L+max(R1,R2))
 distance_df = rdm.preprocess_distance_matrix(distance_matrix, trips, intersection_candidates)
 
 print("\nSTEP 3: Validating candidate intersections")
@@ -101,7 +101,7 @@ extremity_clusters.to_csv(os.path.join(output_dir, f'mx_df_extremities.csv'))
 
 print("\nSTEP 5: Road inference")
 
-distance_matrix = rdm.compute_dist_matrix(nodes_info, trips, config["road_inference"].getfloat('dist_node'))
+distance_matrix = rdm.compute_distance_matrix(nodes_info, trips, config["road_inference"].getfloat('dist_node'))
 distance_df = rdm.preprocess_distance_matrix(distance_matrix, trips, nodes_info)
 
 nodes_info = rdm.assign_triplog_to_clusters(nodes_info, distance_df, config["road_inference"].getfloat('dist_node'))

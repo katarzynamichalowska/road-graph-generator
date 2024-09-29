@@ -16,8 +16,6 @@ def distance_haversine(lat1, lon1, lat2, lon2):
         cos(lat2*p) * (1-cos((lon2-lon1)*p)) / 2
     return 12742 * asin(sqrt(hav))
 
-
-
 def intersection_validation_cluster_points(mx_df, intersection_candidates, epsilon, min_samples, R, L, proximity_threshold, x_var="ping_x", y_var="ping_y"):
     """
     Cluster GPS points around intersection candidates and categorize them into different groups.
@@ -221,8 +219,6 @@ def get_dropoff_points_dbscan(data, proj_info, eps=0.001):
     new_dropoff = dropoff
     new_dropoff = rdm.add_meter_columns(new_dropoff, proj_info)[0]
     data_list = data[["Longitude", "Latitude", "Altitude"]].to_dict('records')
-
-    #new_dropoff["z"] = new_dropoff.apply(lambda x: closest(data_list, x), axis=1)
     new_dropoff["Altitude"] = new_dropoff.apply(lambda x: closest(data_list, x), axis=1)
     return new_dropoff
 

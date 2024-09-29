@@ -18,9 +18,9 @@ if not os.path.exists(output_dir):
 
 # Read and preprocess the data
 events = pd.read_hdf(os.path.join(folder, config["io"]["events_data"]+".h5"))
-events = events[["Id", "LoadDateTime", "DumpDateTime", "LoadLongitude", "LoadLatitude", "DumpLongitude", "DumpLatitude", "LoaderMachineName","DumperMachineName", "TaskId", "TaskDescription", "Comment", "Origin", "Quantity", "DumpGeoFenceLongitudes", "LoadGeoFenceLongitudes"]]
+events = events[["Id", "LoadDateTime", "DumpDateTime", "LoadLongitude", "LoadLatitude", "DumpLongitude", "DumpLatitude", "LoaderMachineName", "TaskId", "TaskDescription"]]
 tracking = pd.read_hdf(os.path.join(folder, config["io"]["tracking_data"]+".h5"))
-tracking = tracking[["Id", "TripLogId", "Coordinate.Latitude", "Coordinate.Longitude", "Speed", "Distance", "Course", "Altitude", "Type"]]
+tracking = tracking[["Id", "TripLogId", "Latitude", "Longitude", "Speed", "Distance", "Course", "Altitude", "Type"]]
 tracking.reset_index(inplace=True)
 
 raw_data, proj_info = produce_graph.read_data(events, tracking)
